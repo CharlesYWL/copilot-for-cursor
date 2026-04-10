@@ -1,34 +1,80 @@
 # 🚀 Copilot Proxy for Cursor
 
+> Forked from [jacksonkasi1/copilot-for-cursor](https://github.com/jacksonkasi1/copilot-for-cursor) with fixes for full Anthropic → OpenAI message conversion.
+
 **Unlock the full power of GitHub Copilot in Cursor IDE.**
 
 This project provides a local proxy server that acts as a bridge between Cursor and GitHub Copilot. It solves key limitations by:
 1.  **Bypassing Cursor's Model Routing:** Using a custom prefix (`cus-`) to force Cursor to use your own API endpoint instead of its internal backend.
 2.  **Enabling Agentic Capabilities:** Transforming Cursor's Anthropic-style tool calls into OpenAI-compatible formats that Copilot understands. This enables **File Editing, Terminal Execution, Codebase Search, and MCP Tools**.
-3.  **Fixing Schema Errors:** Automatically sanitizing requests to prevent `400 Bad Request` errors caused by format mismatches (e.g., `tool_choice`, `cache_control`).
+3.  **Fixing Schema Errors:** Automatically sanitizing requests to prevent `400 Bad Request` errors caused by format mismatches (e.g., `tool_choice`, `cache_control`, unsupported content types).
+
+### Changes in this fork
+
+- **Full Anthropic → OpenAI message conversion:** Assistant `tool_use` blocks are converted to OpenAI `tool_calls`; user `tool_result` blocks become `tool` role messages. This fixes `unexpected tool_use_id found in tool_result blocks` errors.
+- **Unsupported content type stripping:** Blocks with types like `thinking`, `tool_use` (in user messages), etc. are filtered out before forwarding, preventing `type has to be either 'image_url' or 'text'` errors.
+- **Windows setup instructions** added below.
 
 ---
 
 ## 🏗 Architecture
 
+```
+Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → GitHub Copilot
+```
+
 *   **Port 4141 (`copilot-api`):** The core service that authenticates with GitHub and provides the OpenAI-compatible API.
-    *   *Powered by the open-source [copilot-api](https://github.com/ericc-ch/copilot-api) project. Our setup script automatically handles the installation and execution of this package.*
-*   **Port 4142 (`proxy-router`):** The intelligence layer. It intercepts requests, transforms schemas, handles the "loophole" prefix, and serves the dashboard.
+    *   *Powered by [caozhiyuan/copilot-api](https://github.com/caozhiyuan/copilot-api) (installed via `npx`).*
+*   **Port 4142 (`proxy-router`):** The intelligence layer. It intercepts requests, converts Anthropic-format messages to OpenAI format, handles the `cus-` prefix, and serves the dashboard.
+*   **HTTPS tunnel (Cloudflare/ngrok):** Cursor requires HTTPS — a tunnel exposes the local proxy to the internet.
 
 ---
 
 ## 🛠 Setup Guide
 
-### 1. Prerequisites
-*   Node.js & npm
-*   Bun (`curl -fsSL https://bun.sh/install | bash`)
-*   ngrok (for HTTPS tunneling required by Cursor)
+### Prerequisites
+*   [Node.js](https://nodejs.org/) & npm
+*   [Bun](https://bun.sh/) (for the proxy-router)
+*   A tunnel tool — **Cloudflare Tunnel** (free, no signup) or **ngrok**
+*   GitHub account with a **Copilot subscription** (individual, business, or enterprise)
 
-### 2. Installation & Auto-Start (macOS)
-Run these scripts once to set up persistent background services. They will start automatically on boot and restart if they crash.
+### Quick Start (Windows)
 
-**Note:** The `setup-copilot-service.sh` script will automatically install and run the upstream `copilot-api` via `npx`, so you don't need to clone that repository manually.
+Open **3 separate terminals** and run each command:
 
+**Terminal 1 — Start copilot-api (port 4141):**
+```sh
+npx @jeffreycao/copilot-api@latest start
+```
+> On first run, it will prompt you to authenticate via GitHub device flow.
+
+**Terminal 2 — Start proxy-router (port 4142):**
+```sh
+cd copilot-for-cursor
+bun run proxy-router.ts
+```
+
+**Terminal 3 — Start HTTPS tunnel:**
+
+Using Cloudflare Tunnel (recommended, free, no signup):
+```sh
+# Install (one-time)
+winget install cloudflare.cloudflared
+
+# Run tunnel
+cloudflared tunnel --url http://localhost:4142
+```
+
+Or using ngrok:
+```sh
+ngrok http 4142
+```
+
+Copy the HTTPS URL from the tunnel output (e.g., `https://xxxxx.trycloudflare.com`).
+
+### Quick Start (macOS)
+
+Run the setup scripts for persistent background services:
 ```bash
 # 1. Setup Core API (Port 4141)
 chmod +x setup-copilot-service.sh
@@ -37,13 +83,14 @@ chmod +x setup-copilot-service.sh
 # 2. Setup Proxy Router (Port 4142)
 chmod +x setup-proxy-service.sh
 ./setup-proxy-service.sh
+
+# 3. Start tunnel
+ngrok http 4142
 ```
 
-### 3. Verify Services
+### Verify Services
 Check if the dashboard is running:
 👉 **[http://localhost:4142](http://localhost:4142)**
-
-**Dashboard Preview:**
 
 ![Dashboard Preview](./dashboard-preview.png)
 
@@ -51,33 +98,55 @@ Check if the dashboard is running:
 
 ## ⚙️ Cursor Configuration
 
-Cursor requires an HTTPS endpoint. We use `ngrok` to expose our local proxy.
+1.  Go to **Settings** (Gear Icon) → **Models**.
+2.  Toggle **OFF** "Copilot" (optional, to avoid conflicts).
+3.  Add a new **OpenAI Compatible** model:
+    *   **Base URL:** `https://your-tunnel-url.trycloudflare.com/v1`
+    *   **API Key:** `dummy` (any value works, unless you configured `auth.apiKeys` in copilot-api's `config.json`)
+    *   **Model Name:** Use a **prefixed name** — e.g., `cus-gpt-4o`, `cus-claude-sonnet-4`, `cus-claude-sonnet-4.5`
 
-1.  **Start ngrok:**
-    ```bash
-    ngrok http 4142
-    ```
-    *Copy the HTTPS URL provided by ngrok (e.g., `https://your-url.ngrok-free.app`).*
+> **💡 Tip:** Go to the [Dashboard](http://localhost:4142) to see all available models and copy their IDs.
 
-2.  **Configure Cursor:**
-    *   Go to **Settings** (Gear Icon) -> **Models**.
-    *   Toggle **OFF** "Copilot" (optional, to avoid conflicts).
-    *   Add a new **OpenAI Compatible** model:
-        *   **Base URL:** `https://your-ngrok-url.ngrok-free.app/v1`
-        *   **API Key:** `dummy` (any value works)
-        *   **Model Name:** Use a **prefixed name** (e.g., `cus-claude-sonnet-4.5`).
+> **⚠️ Important:** You **must** use the `cus-` prefix. Without it, Cursor routes the request to its own backend instead of your proxy.
 
-    > **💡 Tip:** Go to the [Dashboard](http://localhost:4142) to see all available models and copy their IDs.
+### Available Models (examples)
 
-    **Configuration Screenshot:**
-    
-    ![Cursor Settings Configuration](./cursor-settings.png)
+| Cursor Model Name | Actual Model |
+|---|---|
+| `cus-gpt-4o` | GPT-4o |
+| `cus-gpt-5.4` | GPT-5.4 |
+| `cus-claude-sonnet-4` | Claude Sonnet 4 |
+| `cus-claude-sonnet-4.5` | Claude Sonnet 4.5 |
+| `cus-claude-opus-4.6` | Claude Opus 4.6 |
+| `cus-gemini-2.5-pro` | Gemini 2.5 Pro |
+
+![Cursor Settings Configuration](./cursor-settings.png)
+
+---
+
+## 🔒 Security: API Key Protection
+
+If you're using a tunnel (exposing to the public internet), set an API key in copilot-api's config:
+
+**Config location:**
+- Linux/macOS: `~/.local/share/copilot-api/config.json`
+- Windows: `%USERPROFILE%\.local\share\copilot-api\config.json`
+
+```json
+{
+  "auth": {
+    "apiKeys": ["your-secret-key-here"]
+  }
+}
+```
+
+Then use the same key as the **API Key** in Cursor settings.
 
 ---
 
 ## ✨ Features & Supported Tools
 
-This proxy enables **full agentic workflows**. The following capabilities are fully supported:
+This proxy enables **full agentic workflows**:
 
 *   **💬 Chat & Reasoning:** Full conversation context with standard models.
 *   **📂 File System:** `Read`, `Write`, `StrReplace`, `Delete`.
@@ -85,29 +154,57 @@ This proxy enables **full agentic workflows**. The following capabilities are fu
 *   **🔍 Search:** `Grep`, `Glob`, `SemanticSearch`.
 *   **🔌 MCP Tools:** Full support for external tools like Neon, Playwright, etc.
 
----
+### What the proxy handles
 
-## ⚠️ Known Limitations: Claude Vision Support
-
-There is a known server-side limitation with **Claude models** via the GitHub Copilot API.
-
-*   **Gemini / GPT-4o:** Full Vision Support (Images work perfectly).
-*   **Claude (via Copilot):** Does **NOT** support images via the API proxy. Requests containing images will be rejected by GitHub with `400 Bad Request`.
-
-**The Workaround (Implemented in Proxy):**
-To prevent crashes, the proxy automatically **strips images** from requests sent to Claude models. Claude will see a placeholder `[Image Omitted]` instead.
-
-**Suggested Workflow:**
-1.  **Need Vision?** Use `cus-gemini-3-flash-preview` or `cus-gpt-4o`.
-2.  **Need Coding Smarts?** Use `cus-claude-sonnet-4.5`.
-3.  **Switching Context:** If you start with Gemini (image) and want to switch to Claude, consider **duplicating the chat** (Cursor feature) or starting a fresh chat to ensure a clean context without image dependencies.
-
-> **💡 Help Wanted:** If you know how to get Claude Vision working via the unofficial Copilot API, please open an Issue or PR!
+| Cursor sends (Anthropic format) | Proxy converts to (OpenAI format) |
+|---|---|
+| `tool_use` blocks in assistant messages | `tool_calls` array |
+| `tool_result` blocks in user messages | `tool` role messages |
+| `thinking` blocks | Stripped (not supported) |
+| `cache_control` on content blocks | Stripped |
+| `input_schema` on tools | Converted to `parameters` |
+| Anthropic `tool_choice` objects | OpenAI string format |
+| Images in Claude requests | Stripped with `[Image Omitted]` placeholder |
 
 ---
 
-### 📝 Logs
-If you encounter issues, check the logs:
+## ⚠️ Known Limitations
+
+### Claude Vision
+*   **Gemini / GPT-4o:** Full Vision Support ✅
+*   **Claude (via Copilot):** Does **NOT** support images via the API proxy ❌
+
+The proxy automatically strips images from Claude requests to prevent crashes.
+
+### What's lost vs native Anthropic API
+Since Cursor sends to `/v1/chat/completions` (OpenAI) instead of `/v1/messages` (Anthropic), some features are unavailable:
+
+| Feature | Status |
+|---|---|
+| Extended thinking (chain-of-thought) | ❌ Stripped |
+| Prompt caching (`cache_control`) | ❌ Stripped |
+| Context management beta | ❌ Not available |
+| Premium request optimization | ❌ Bypassed |
+| Basic chat & tool calling | ✅ Works |
+| Streaming | ✅ Works |
+
+### Tunnel URL changes on restart
+Cloudflare quick tunnels generate a new URL each time. You'll need to update Cursor settings when you restart the tunnel. Consider a paid plan for a fixed subdomain.
+
+---
+
+### 📝 Troubleshooting
+
+**"Model name is not valid" in Cursor:**
+Make sure you're using the `cus-` prefix (e.g., `cus-gpt-4o`, not `gpt-4o`).
+
+**"connection refused" on tunnel:**
+Ensure all 3 services are running (copilot-api on 4141, proxy-router on 4142, tunnel).
+
+**500 errors from copilot-api:**
+Restart copilot-api. If the error mentions `messages`, the proxy should now handle it — make sure you're running the latest `proxy-router.ts`.
+
+**Logs (macOS):**
 *   Proxy: `tail -f ~/Library/Logs/copilot-proxy.log`
 *   API: `tail -f ~/Library/Logs/copilot-api.log`
 
