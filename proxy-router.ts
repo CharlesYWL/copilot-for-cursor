@@ -89,90 +89,102 @@ Bun.serve({
             else if (json.tool_choice.type === 'required') json.tool_choice = "required";
         }
 
-        // --- PROCESS MESSAGES (Sanitize, Transform, Handle Tools) ---
+        // --- HELPER: Sanitize a content part for OpenAI (text/image_url only) ---
+        const sanitizeContentPart = (part: any): any | null => {
+            if (part.cache_control) delete part.cache_control;
+
+            // Strip images for Claude
+            if (isClaude && (part.type === 'image' || (part.source?.type === 'base64'))) {
+                return { type: 'text', text: '[Image Omitted]' };
+            }
+            // Transform base64 images to image_url
+            if (part.type === 'image' && part.source?.type === 'base64') {
+                return { type: 'image_url', image_url: { url: `data:${part.source.media_type};base64,${part.source.data}` } };
+            }
+            if (part.type === 'image') { part.type = 'image_url'; return part; }
+
+            // Only keep text and image_url
+            if (part.type === 'text' || part.type === 'image_url') return part;
+
+            // Drop everything else (thinking, tool_use, tool_result handled separately)
+            return null;
+        };
+
+        // --- PROCESS MESSAGES: Full Anthropic → OpenAI conversion ---
         if (json.messages && Array.isArray(json.messages)) {
             const newMessages: any[] = [];
-            
-            for (let i = 0; i < json.messages.length; i++) {
-                const msg = json.messages[i];
-                let isToolResult = false;
 
-                // 1. Handle Anthropic "Tool Result" Block
+            for (const msg of json.messages) {
+
+                // --- ASSISTANT messages: convert tool_use blocks → OpenAI tool_calls ---
+                if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+                    const textParts: string[] = [];
+                    const toolCalls: any[] = [];
+
+                    for (const part of msg.content) {
+                        if (part.type === 'tool_use') {
+                            toolCalls.push({
+                                id: part.id,
+                                type: 'function',
+                                function: {
+                                    name: part.name,
+                                    arguments: typeof part.input === 'string' ? part.input : JSON.stringify(part.input ?? {})
+                                }
+                            });
+                        } else if (part.type === 'text') {
+                            textParts.push(part.text);
+                        }
+                        // Skip thinking, etc.
+                    }
+
+                    const assistantMsg: any = { role: 'assistant' };
+                    assistantMsg.content = textParts.join('\n') || null;
+                    if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
+                    newMessages.push(assistantMsg);
+                    continue;
+                }
+
+                // --- USER messages: convert tool_result blocks → OpenAI tool role messages ---
                 if (msg.role === 'user' && Array.isArray(msg.content)) {
                     const toolResults = msg.content.filter((c: any) => c.type === 'tool_result');
-                    if (toolResults.length > 0) {
-                        isToolResult = true;
-                        toolResults.forEach((tr: any) => {
-                            newMessages.push({
-                                role: "tool",
-                                tool_call_id: tr.tool_use_id,
-                                content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content)
-                            });
-                        });
-                        
-                        const otherContent = msg.content.filter((c: any) => c.type !== 'tool_result');
-                        if (otherContent.length > 0) {
-                            const mappedContent = otherContent.map((part: any) => {
-                                if (part.cache_control) delete part.cache_control;
-                                
-                                // CLAUDE: Strip Images (Quietly)
-                                if (isClaude) {
-                                    if (part.type === 'image' || (part.source && part.source.type === 'base64')) {
-                                        return { type: 'text', text: '[Image Omitted]' };
-                                    }
-                                }
+                    const otherParts = msg.content.filter((c: any) => c.type !== 'tool_result' && c.type !== 'tool_use');
 
-                                // ALL: Transform Images
-                                if (part.type === 'image' && part.source && part.source.type === 'base64') {
-                                    return {
-                                        type: 'image_url',
-                                        image_url: {
-                                            url: `data:${part.source.media_type};base64,${part.source.data}`
-                                        }
-                                    };
-                                }
-                                if (part.type === 'image') part.type = 'image_url';
-                                return part;
-                            });
-                            newMessages.push({ role: 'user', content: mappedContent });
+                    // Emit tool messages first
+                    for (const tr of toolResults) {
+                        let resultContent = tr.content;
+                        if (typeof resultContent !== 'string') {
+                            if (Array.isArray(resultContent)) {
+                                resultContent = resultContent.map((p: any) => p.text || JSON.stringify(p)).join('\n');
+                            } else {
+                                resultContent = JSON.stringify(resultContent);
+                            }
+                        }
+                        newMessages.push({
+                            role: 'tool',
+                            tool_call_id: tr.tool_use_id,
+                            content: resultContent || ''
+                        });
+                    }
+
+                    // Emit remaining user content (sanitized)
+                    if (otherParts.length > 0) {
+                        const cleaned = otherParts.map(sanitizeContentPart).filter(Boolean);
+                        if (cleaned.length > 0) {
+                            newMessages.push({ role: 'user', content: cleaned });
                         }
                     }
+                    continue;
                 }
 
-                if (!isToolResult) {
-                    if (Array.isArray(msg.content)) {
-                        msg.content = msg.content.map((part: any) => {
-                            if (part.cache_control) delete part.cache_control;
-                            
-                            // CLAUDE: Strip Images (Quietly)
-                            if (isClaude) {
-                                if (part.type === 'image' || (part.source && part.source.type === 'base64')) {
-                                    return { type: 'text', text: '[Image Omitted]' };
-                                }
-                            }
-
-                            // ALL: Transform Images
-                            if (part.type === 'image' && part.source && part.source.type === 'base64') {
-                                return {
-                                    type: 'image_url',
-                                    image_url: {
-                                        url: `data:${part.source.media_type};base64,${part.source.data}`
-                                    }
-                                };
-                            }
-                            
-                            if (part.type === 'image') part.type = 'image_url';
-                            return part;
-                        });
-                        
-                        if (msg.content.length === 0) msg.content = " ";
-                    }
-                    newMessages.push(msg);
+                // --- All other messages: sanitize content parts ---
+                if (Array.isArray(msg.content)) {
+                    const cleaned = msg.content.map(sanitizeContentPart).filter(Boolean);
+                    msg.content = cleaned.length > 0 ? cleaned : ' ';
                 }
+                newMessages.push(msg);
             }
+
             json.messages = newMessages;
-            
-            // NOTE: Removed System Prompt Injection to avoid confusing Claude.
         }
 
         const body = JSON.stringify(json);
