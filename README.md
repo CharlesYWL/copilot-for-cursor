@@ -81,30 +81,32 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 
 > **💡 Tip:** Visit the [Dashboard](http://localhost:4142) to see all available models and copy their IDs.
 
-### Tested Models (20/21 passing)
+### Tested Models (15/21 passing)
 
-| Cursor Model Name | Actual Model | API Route |
+| Cursor Model Name | Actual Model | Status |
 |---|---|---|
-| `cus-gpt-4o` | GPT-4o | Chat Completions |
-| `cus-gpt-4.1` | GPT-4.1 | Chat Completions |
-| `cus-gpt-5-mini` | GPT-5 Mini | Chat Completions |
-| `cus-gpt-5.1` | GPT-5.1 | Chat Completions |
-| `cus-gpt-5.2` | GPT-5.2 | Responses API ✨ |
-| `cus-gpt-5.2-codex` | GPT-5.2 Codex | Responses API ✨ |
-| `cus-gpt-5.3-codex` | GPT-5.3 Codex | Responses API ✨ |
-| `cus-gpt-5.4` | GPT-5.4 | Responses API ✨ |
-| `cus-gpt-5.4-mini` | GPT-5.4 Mini | Responses API ✨ |
-| `cus-claude-haiku-4.5` | Claude Haiku 4.5 | Chat Completions |
-| `cus-claude-sonnet-4` | Claude Sonnet 4 | Chat Completions |
-| `cus-claude-sonnet-4.5` | Claude Sonnet 4.5 | Chat Completions |
-| `cus-claude-sonnet-4.6` | Claude Sonnet 4.6 | Chat Completions |
-| `cus-claude-opus-4.5` | Claude Opus 4.5 | Chat Completions |
-| `cus-claude-opus-4.6` | Claude Opus 4.6 | Chat Completions |
-| `cus-claude-opus-4.6-1m` | Claude Opus 4.6 (1M) | Chat Completions |
-| `cus-gemini-2.5-pro` | Gemini 2.5 Pro | Chat Completions |
-| `cus-gemini-3-flash-preview` | Gemini 3 Flash | Chat Completions |
-| `cus-gemini-3.1-pro-preview` | Gemini 3.1 Pro | Chat Completions |
-| `cus-goldeneye` | Goldeneye | Responses API ✨ |
+| `cus-gpt-4o` | GPT-4o | ✅ |
+| `cus-gpt-4.1` | GPT-4.1 | ✅ |
+| `cus-gpt-5-mini` | GPT-5 Mini | ✅ |
+| `cus-gpt-5.1` | GPT-5.1 | ✅ |
+| `cus-gpt-5.2` | GPT-5.2 | ⚠️ See note |
+| `cus-gpt-5.2-codex` | GPT-5.2 Codex | ⚠️ See note |
+| `cus-gpt-5.3-codex` | GPT-5.3 Codex | ⚠️ See note |
+| `cus-gpt-5.4` | GPT-5.4 | ⚠️ See note |
+| `cus-gpt-5.4-mini` | GPT-5.4 Mini | ⚠️ See note |
+| `cus-goldeneye` | Goldeneye | ⚠️ See note |
+| `cus-claude-haiku-4.5` | Claude Haiku 4.5 | ✅ |
+| `cus-claude-sonnet-4` | Claude Sonnet 4 | ✅ |
+| `cus-claude-sonnet-4.5` | Claude Sonnet 4.5 | ✅ |
+| `cus-claude-sonnet-4.6` | Claude Sonnet 4.6 | ✅ |
+| `cus-claude-opus-4.5` | Claude Opus 4.5 | ✅ |
+| `cus-claude-opus-4.6` | Claude Opus 4.6 | ✅ |
+| `cus-claude-opus-4.6-1m` | Claude Opus 4.6 (1M) | ✅ |
+| `cus-gemini-2.5-pro` | Gemini 2.5 Pro | ✅ |
+| `cus-gemini-3-flash-preview` | Gemini 3 Flash | ✅ |
+| `cus-gemini-3.1-pro-preview` | Gemini 3.1 Pro | ✅ |
+
+> **⚠️ GPT-5.2+, GPT-5.x-codex, and goldeneye** are currently broken. These models require the `/v1/responses` API or `max_completion_tokens` instead of `max_tokens`, but `copilot-api` injects `max_tokens` into all requests. The proxy has a Responses API bridge built in, but `copilot-api` no longer exposes the `/v1/responses` endpoint. This will be resolved when `copilot-api` is updated. **All Claude, Gemini, GPT-4.x, GPT-5-mini, and GPT-5.1 models work fine.**
 
 ![Cursor Settings Configuration](./cursor-settings.png)
 
@@ -125,8 +127,8 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 | `thinking` / `cache_control` blocks | Stripped |
 | `metadata` / `anthropic_version` | Stripped |
 | Images in Claude requests | `[Image Omitted]` placeholder |
-| GPT-5.x Chat Completions requests | **Bridged to Responses API** ✨ |
-| Responses API streaming SSE | **Converted to Chat Completions SSE** ✨ |
+| GPT-5.x `max_tokens` | Converted to `max_completion_tokens` |
+| GPT-5.x Responses API | **Bridge built in** (needs `copilot-api` support) |
 
 ### Supported Workflows
 
