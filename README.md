@@ -81,7 +81,7 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 
 > **💡 Tip:** Visit the [Dashboard](http://localhost:4142) to see all available models and copy their IDs.
 
-### Tested Models (21/22 passing)
+### Tested Models (19/20 passing)
 
 | Cursor Model Name | Actual Model | Status |
 |---|---|---|
@@ -95,14 +95,12 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 | `cus-gpt-5.3-codex` | GPT-5.3 Codex | ✅ |
 | `cus-gpt-5.4` | GPT-5.4 | ✅ |
 | `cus-gpt-5.4-mini` | GPT-5.4 Mini | ✅ |
-| `cus-goldeneye` | Goldeneye | ✅ |
 | `cus-claude-haiku-4.5` | Claude Haiku 4.5 | ✅ |
 | `cus-claude-sonnet-4` | Claude Sonnet 4 | ✅ |
 | `cus-claude-sonnet-4.5` | Claude Sonnet 4.5 | ✅ |
 | `cus-claude-sonnet-4.6` | Claude Sonnet 4.6 | ✅ |
 | `cus-claude-opus-4.5` | Claude Opus 4.5 | ✅ |
 | `cus-claude-opus-4.6` | Claude Opus 4.6 | ✅ |
-| `cus-claude-opus-4.6-1m` | Claude Opus 4.6 (1M) | ✅ |
 | `cus-gemini-2.5-pro` | Gemini 2.5 Pro | ✅ |
 | `cus-gemini-3-flash-preview` | Gemini 3 Flash | ✅ |
 | `cus-gemini-3.1-pro-preview` | Gemini 3.1 Pro | ✅ |
