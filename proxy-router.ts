@@ -205,38 +205,34 @@ Bun.serve({
 
         logTransformedRequest(json);
 
-        const body = JSON.stringify(json);
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
-        headers.set("content-length", String(new TextEncoder().encode(body).length));
 
         const needsResponsesAPI = targetModel.match(/^gpt-5\.[2-9]|^gpt-5\.\d+-codex|^o[1-9]|^goldeneye/i);
         
-        // For models that need max_completion_tokens instead of max_tokens
-        const needsMaxCompletionTokens = targetModel.match(/^gpt-5\.[2-9]|^gpt-5\.\d+-codex|^goldeneye/i);
-        if (needsMaxCompletionTokens && json.max_tokens) {
+        if (needsResponsesAPI && json.max_tokens) {
             json.max_completion_tokens = json.max_tokens;
             delete json.max_tokens;
             console.log(`🔧 Converted max_tokens → max_completion_tokens`);
         }
 
-        // Try Responses API first for models that may need it; fall back to chat completions
         if (needsResponsesAPI) {
-            console.log(`🔀 Model ${targetModel} — trying Responses API bridge`);
+            console.log(`🔀 Model ${targetModel} — using Responses API bridge`);
             const chatId = `chatcmpl-proxy-${++responseCounter}`;
             try {
                 const result = await handleResponsesAPIBridge(json, req, chatId, TARGET_URL);
-                if (result.status !== 404) {
-                    addRequestLog({
-                        id: getNextRequestId(), timestamp: startTime, model: targetModel,
-                        promptTokens: 0, completionTokens: 0, totalTokens: 0,
-                        status: result.status, duration: Date.now() - startTime, stream: !!json.stream,
-                    });
-                    return result;
-                }
-                console.log(`⚠️ Responses API returned 404 — falling back to chat/completions`);
-            } catch (e) {
-                console.log(`⚠️ Responses API failed — falling back to chat/completions`);
+                addRequestLog({
+                    id: getNextRequestId(), timestamp: startTime, model: targetModel,
+                    promptTokens: 0, completionTokens: 0, totalTokens: 0,
+                    status: result.status, duration: Date.now() - startTime, stream: !!json.stream,
+                });
+                return result;
+            } catch (e: any) {
+                console.error(`❌ Responses API bridge failed for ${targetModel}:`, e?.message || e);
+                return new Response(
+                    JSON.stringify({ error: { message: `Responses API bridge failed: ${e?.message || 'Unknown error'}`, type: "proxy_error" } }),
+                    { status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+                );
             }
         }
 
@@ -247,6 +243,9 @@ Bun.serve({
         if (!isClaude && json.messages && hasVisionContent(json.messages)) {
              headers.set("Copilot-Vision-Request", "true");
         }
+
+        const body = JSON.stringify(json);
+        headers.set("content-length", String(new TextEncoder().encode(body).length));
 
         const response = await fetch(targetUrl.toString(), {
           method: "POST",

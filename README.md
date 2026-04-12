@@ -50,8 +50,8 @@ Copy the HTTPS URL (e.g., `https://xxxxx.trycloudflare.com`).
 Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → GitHub Copilot
 ```
 
-*   **Port 4141 (`copilot-api`):** Authenticates with GitHub and provides the OpenAI-compatible API.
-    *   *Powered by [copilot-api](https://www.npmjs.com/package/copilot-api) (installed via `npx`).*
+*   **Port 4141 (`copilot-api`):** Authenticates with GitHub, provides the OpenAI-compatible API, and natively handles the Responses API for GPT-5.x models.
+    *   *Powered by [@jeffreycao/copilot-api](https://github.com/caozhiyuan/copilot-api) (installed via `npx`).*
 *   **Port 4142 (`proxy-router`):** Converts Anthropic-format messages to OpenAI format, bridges Responses API for GPT-5.x models, handles the `cus-` prefix, and serves the dashboard.
 *   **HTTPS tunnel:** Cursor requires HTTPS — a tunnel exposes the local proxy.
 
@@ -81,20 +81,21 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 
 > **💡 Tip:** Visit the [Dashboard](http://localhost:4142) to see all available models and copy their IDs.
 
-### Tested Models (15/21 passing)
+### Tested Models (21/22 passing)
 
 | Cursor Model Name | Actual Model | Status |
 |---|---|---|
 | `cus-gpt-4o` | GPT-4o | ✅ |
 | `cus-gpt-4.1` | GPT-4.1 | ✅ |
+| `cus-gpt-41-copilot` | GPT-4.1 Copilot | ❌ Not supported by GitHub |
 | `cus-gpt-5-mini` | GPT-5 Mini | ✅ |
-| `cus-gpt-5.1` | GPT-5.1 | ✅ |
-| `cus-gpt-5.2` | GPT-5.2 | ⚠️ See note |
-| `cus-gpt-5.2-codex` | GPT-5.2 Codex | ⚠️ See note |
-| `cus-gpt-5.3-codex` | GPT-5.3 Codex | ⚠️ See note |
-| `cus-gpt-5.4` | GPT-5.4 | ⚠️ See note |
-| `cus-gpt-5.4-mini` | GPT-5.4 Mini | ⚠️ See note |
-| `cus-goldeneye` | Goldeneye | ⚠️ See note |
+| `cus-gpt-5.1` | GPT-5.1 | ✅ (deprecating 2026-04-15) |
+| `cus-gpt-5.2` | GPT-5.2 | ✅ |
+| `cus-gpt-5.2-codex` | GPT-5.2 Codex | ✅ |
+| `cus-gpt-5.3-codex` | GPT-5.3 Codex | ✅ |
+| `cus-gpt-5.4` | GPT-5.4 | ✅ |
+| `cus-gpt-5.4-mini` | GPT-5.4 Mini | ✅ |
+| `cus-goldeneye` | Goldeneye | ✅ |
 | `cus-claude-haiku-4.5` | Claude Haiku 4.5 | ✅ |
 | `cus-claude-sonnet-4` | Claude Sonnet 4 | ✅ |
 | `cus-claude-sonnet-4.5` | Claude Sonnet 4.5 | ✅ |
@@ -105,8 +106,9 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 | `cus-gemini-2.5-pro` | Gemini 2.5 Pro | ✅ |
 | `cus-gemini-3-flash-preview` | Gemini 3 Flash | ✅ |
 | `cus-gemini-3.1-pro-preview` | Gemini 3.1 Pro | ✅ |
+| `cus-text-embedding-3-small` | Text Embedding 3 Small | N/A (embedding model) |
 
-> **⚠️ GPT-5.2+, GPT-5.x-codex, and goldeneye** are currently broken. These models require the `/v1/responses` API or `max_completion_tokens` instead of `max_tokens`, but `copilot-api` injects `max_tokens` into all requests. The proxy has a Responses API bridge built in, but `copilot-api` no longer exposes the `/v1/responses` endpoint. This will be resolved when `copilot-api` is updated. **All Claude, Gemini, GPT-4.x, GPT-5-mini, and GPT-5.1 models work fine.**
+> All GPT-5.x models now work thanks to the switch to [@jeffreycao/copilot-api](https://github.com/caozhiyuan/copilot-api), which natively supports the Responses API. The proxy also includes its own Responses API bridge as a fallback.
 
 ![Cursor Settings Configuration](./cursor-settings.png)
 
@@ -186,7 +188,7 @@ Three tabs:
 | Streaming | ✅ Works |
 | Plan mode | ✅ Works |
 | Agent mode | ✅ Works |
-| GPT-5.x models | ⚠️ Blocked by copilot-api `max_tokens` bug |
+| All GPT-5.x models | ✅ Works |
 | Extended thinking (chain-of-thought) | ❌ Stripped |
 | Prompt caching (`cache_control`) | ❌ Stripped |
 | Claude Vision | ❌ Not supported via Copilot |

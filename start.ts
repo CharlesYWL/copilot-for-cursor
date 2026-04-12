@@ -54,7 +54,7 @@ async function main() {
         const isWindows = process.platform === 'win32';
         const npxCmd = isWindows ? 'npx.cmd' : 'npx';
 
-        copilotProc = spawn([npxCmd, 'copilot-api', 'start'], {
+        copilotProc = spawn([npxCmd, '@jeffreycao/copilot-api@latest', 'start'], {
             stdout: 'pipe',
             stderr: 'pipe',
         });
