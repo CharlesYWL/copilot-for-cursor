@@ -2,28 +2,7 @@ import { normalizeRequest } from './anthropic-transforms';
 import { handleResponsesAPIBridge } from './responses-bridge';
 import { createStreamProxy } from './stream-proxy';
 import { logIncomingRequest, logTransformedRequest } from './debug-logger';
-
-// ── Request tracking ──────────────────────────────────────────────────────────
-interface RequestLog {
-    id: number;
-    timestamp: number;
-    model: string;
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    status: number;
-    duration: number;
-    stream: boolean;
-}
-
-const requestLogs: RequestLog[] = [];
-const MAX_LOGS = 1000;
-let requestIdCounter = 0;
-
-function addRequestLog(log: RequestLog) {
-    requestLogs.push(log);
-    if (requestLogs.length > MAX_LOGS) requestLogs.shift();
-}
+import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type RequestLog } from './usage-db';
 
 // ── Console capture for SSE streaming ─────────────────────────────────────────
 interface ConsoleLine {
@@ -84,27 +63,15 @@ Bun.serve({
 
     // ── Dashboard API: usage stats ────────────────────────────────────────
     if (url.pathname === "/api/usage") {
-        const stats = {
-            totalRequests: requestLogs.length,
-            totalPromptTokens: requestLogs.reduce((s, r) => s + r.promptTokens, 0),
-            totalCompletionTokens: requestLogs.reduce((s, r) => s + r.completionTokens, 0),
-            totalTokens: requestLogs.reduce((s, r) => s + r.totalTokens, 0),
-            byModel: Object.entries(
-                requestLogs.reduce((acc, r) => {
-                    if (!acc[r.model]) acc[r.model] = { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, errors: 0, avgDuration: 0, totalDuration: 0 };
-                    acc[r.model].requests++;
-                    acc[r.model].promptTokens += r.promptTokens;
-                    acc[r.model].completionTokens += r.completionTokens;
-                    acc[r.model].totalTokens += r.totalTokens;
-                    if (r.status >= 400) acc[r.model].errors++;
-                    acc[r.model].totalDuration += r.duration;
-                    acc[r.model].avgDuration = Math.round(acc[r.model].totalDuration / acc[r.model].requests);
-                    return acc;
-                }, {} as Record<string, any>),
-            ).map(([model, data]) => ({ model, ...data })),
-            recentRequests: requestLogs.slice(-50).reverse(),
-        };
-        return new Response(JSON.stringify(stats), {
+        return new Response(JSON.stringify(getUsageStats()), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+    }
+
+    // ── Dashboard API: flush usage to disk ────────────────────────────────
+    if (url.pathname === "/api/usage/flush" && req.method === "POST") {
+        await flushToDisk();
+        return new Response('{"ok":true}', {
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
     }
@@ -201,7 +168,7 @@ Bun.serve({
                 const result = await handleResponsesAPIBridge(json, req, chatId, TARGET_URL);
                 if (result.status !== 404) {
                     addRequestLog({
-                        id: ++requestIdCounter, timestamp: startTime, model: targetModel,
+                        id: getNextRequestId(), timestamp: startTime, model: targetModel,
                         promptTokens: 0, completionTokens: 0, totalTokens: 0,
                         status: result.status, duration: Date.now() - startTime, stream: !!json.stream,
                     });
@@ -235,7 +202,7 @@ Bun.serve({
             const errText = await response.text();
             console.error(`❌ Upstream Error (${response.status}):`, errText);
             addRequestLog({
-                id: ++requestIdCounter, timestamp: startTime, model: targetModel,
+                id: getNextRequestId(), timestamp: startTime, model: targetModel,
                 promptTokens: 0, completionTokens: 0, totalTokens: 0,
                 status: response.status, duration: Date.now() - startTime, stream: !!json.stream,
             });
@@ -245,7 +212,7 @@ Bun.serve({
         if (json.stream && response.body) {
             return createStreamProxy(response.body, responseHeaders, (usage) => {
                 addRequestLog({
-                    id: ++requestIdCounter, timestamp: startTime, model: targetModel,
+                    id: getNextRequestId(), timestamp: startTime, model: targetModel,
                     promptTokens: usage.promptTokens, completionTokens: usage.completionTokens,
                     totalTokens: usage.totalTokens,
                     status: response.status, duration: Date.now() - startTime, stream: true,
@@ -265,7 +232,7 @@ Bun.serve({
             }
         } catch { /* ignore parse errors */ }
         addRequestLog({
-            id: ++requestIdCounter, timestamp: startTime, model: targetModel,
+            id: getNextRequestId(), timestamp: startTime, model: targetModel,
             promptTokens, completionTokens, totalTokens,
             status: response.status, duration: Date.now() - startTime, stream: false,
         });

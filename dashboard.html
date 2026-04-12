@@ -287,6 +287,26 @@ tr:hover td { background: var(--bg-hover); }
     font-size: 13px;
 }
 .num { font-variant-numeric: tabular-nums; }
+
+/* ── Persistence bar ─────────────────────────────── */
+.persistence-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    margin-bottom: 20px;
+    background: #0d1a0d;
+    border: 1px solid #1a3a1a;
+    border-radius: var(--radius);
+    font-size: 12px;
+    color: var(--text-dim);
+}
+.persist-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+}
 </style>
 </head>
 <body>
@@ -359,7 +379,7 @@ tr:hover td { background: var(--bg-hover); }
     <div id="tab-usage" class="tab-panel">
         <div class="cards" id="usage-cards">
             <div class="card">
-                <div class="card-label">Total Requests</div>
+                <div class="card-label">Total Requests (Lifetime)</div>
                 <div class="card-value num" id="stat-requests">0</div>
             </div>
             <div class="card">
@@ -374,6 +394,29 @@ tr:hover td { background: var(--bg-hover); }
                 <div class="card-label">Total Tokens</div>
                 <div class="card-value num" id="stat-total">0</div>
             </div>
+        </div>
+
+        <div class="persistence-bar" id="persistence-bar" style="display:none">
+            <span class="persist-dot"></span>
+            <span id="persist-info">Data persisted</span>
+            <button class="copy-btn" onclick="flushUsage()" id="flush-btn" style="margin-left:auto">Save Now</button>
+        </div>
+
+        <div class="section-title">Daily History</div>
+        <div class="table-wrap" id="daily-wrap" style="display:none">
+            <table id="daily-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Requests</th>
+                        <th>Prompt Tokens</th>
+                        <th>Completion Tokens</th>
+                        <th>Total Tokens</th>
+                        <th>Errors</th>
+                    </tr>
+                </thead>
+                <tbody id="daily-body"></tbody>
+            </table>
         </div>
 
         <div class="section-title">Per-Model Breakdown</div>
@@ -513,16 +556,47 @@ async function fetchUsage() {
         document.getElementById('stat-completion').textContent = fmtNum(d.totalCompletionTokens);
         document.getElementById('stat-total').textContent = fmtNum(d.totalTokens);
 
+        // Persistence bar
+        if (d.persistence) {
+            const bar = document.getElementById('persistence-bar');
+            bar.style.display = 'flex';
+            const saved = d.persistence.lastSavedAt ? timeAgo(d.persistence.lastSavedAt) : 'never';
+            const since = d.persistence.createdAt ? new Date(d.persistence.createdAt).toLocaleDateString() : '—';
+            document.getElementById('persist-info').textContent =
+                'Saved ' + saved + '  ·  Tracking since ' + since + '  ·  ' + d.persistence.file;
+        }
+
         const empty = document.getElementById('usage-empty');
         if (d.totalRequests === 0) {
             empty.style.display = '';
             document.getElementById('model-usage-table').parentElement.style.display = 'none';
             document.getElementById('recent-table').parentElement.style.display = 'none';
+            document.getElementById('daily-wrap').style.display = 'none';
             return;
         }
         empty.style.display = 'none';
         document.getElementById('model-usage-table').parentElement.style.display = '';
         document.getElementById('recent-table').parentElement.style.display = '';
+
+        // Daily snapshots
+        if (d.dailySnapshots && d.dailySnapshots.length > 0) {
+            document.getElementById('daily-wrap').style.display = '';
+            const dBody = document.getElementById('daily-body');
+            dBody.innerHTML = '';
+            d.dailySnapshots.slice().reverse().forEach(s => {
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' + esc(s.date) + '</td>' +
+                    '<td class="num">' + fmtNum(s.requests) + '</td>' +
+                    '<td class="num">' + fmtNum(s.promptTokens) + '</td>' +
+                    '<td class="num">' + fmtNum(s.completionTokens) + '</td>' +
+                    '<td class="num">' + fmtNum(s.totalTokens) + '</td>' +
+                    '<td class="num" style="color:' + (s.errors > 0 ? 'var(--red)' : 'var(--text-dim)') + '">' + s.errors + '</td>';
+                dBody.appendChild(tr);
+            });
+        } else {
+            document.getElementById('daily-wrap').style.display = 'none';
+        }
 
         // Per-model
         const mBody = document.getElementById('model-usage-body');
@@ -555,6 +629,21 @@ async function fetchUsage() {
             rBody.appendChild(tr);
         });
     } catch (e) { /* silent */ }
+}
+
+async function flushUsage() {
+    const btn = document.getElementById('flush-btn');
+    btn.textContent = 'Saving…';
+    try {
+        await fetch('/api/usage/flush', { method: 'POST' });
+        btn.textContent = 'Saved!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Save Now'; btn.classList.remove('copied'); }, 1500);
+        fetchUsage();
+    } catch {
+        btn.textContent = 'Failed';
+        setTimeout(() => { btn.textContent = 'Save Now'; }, 1500);
+    }
 }
 
 // Auto-refresh usage every 5s when tab is active
