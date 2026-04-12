@@ -28,6 +28,19 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 *   **Port 4142 (`proxy-router`):** The intelligence layer. It intercepts requests, converts Anthropic-format messages to OpenAI format, handles the `cus-` prefix, and serves the dashboard.
 *   **HTTPS tunnel (Cloudflare/ngrok):** Cursor requires HTTPS — a tunnel exposes the local proxy to the internet.
 
+### Proxy Router Modules
+
+The proxy router is split into focused modules:
+
+| File | Responsibility |
+|---|---|
+| `proxy-router.ts` | Entrypoint — Bun.serve, routing, CORS, dashboard, model list |
+| `anthropic-transforms.ts` | Anthropic → OpenAI normalization (fields, tools, messages) |
+| `responses-bridge.ts` | Chat Completions → Responses API bridge for GPT-5.x / o-series |
+| `responses-converters.ts` | Responses API → Chat Completions format (sync & streaming) |
+| `stream-proxy.ts` | Streaming passthrough with chunk logging and error detection |
+| `debug-logger.ts` | Request/response debug logging helpers |
+
 ---
 
 ## 🛠 Setup Guide

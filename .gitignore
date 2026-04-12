@@ -1,0 +1,17 @@
+# Logs
+*.log
+proxy-debug.log
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+*.swp
+*.swo
+*~
