@@ -1,7 +1,18 @@
-export const createStreamProxy = (responseBody: ReadableStream<Uint8Array>, responseHeaders: Headers) => {
+export interface StreamUsageResult {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+}
+
+export const createStreamProxy = (
+    responseBody: ReadableStream<Uint8Array>,
+    responseHeaders: Headers,
+    onComplete?: (usage: StreamUsageResult) => void,
+) => {
     let chunkCount = 0;
     let lastChunkData = '';
     let totalBytes = 0;
+    let extractedUsage: StreamUsageResult = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     const reader = responseBody.getReader();
     const decoder = new TextDecoder();
     
@@ -12,6 +23,7 @@ export const createStreamProxy = (responseBody: ReadableStream<Uint8Array>, resp
                 if (done) {
                     console.log(`✅ Stream complete: ${chunkCount} chunks, ${totalBytes} bytes`);
                     console.log(`✅ Last chunk: ${lastChunkData.slice(-200)}`);
+                    if (onComplete) onComplete(extractedUsage);
                     controller.close();
                     return;
                 }
@@ -30,6 +42,24 @@ export const createStreamProxy = (responseBody: ReadableStream<Uint8Array>, resp
                         console.log(`📡 finish_reason: "${match[1]}" at chunk ${chunkCount}`);
                     }
                 }
+                // Extract usage from chunks (often in the final chunk)
+                if (lastChunkData.includes('"usage"')) {
+                    try {
+                        const lines = lastChunkData.split('\n');
+                        for (const line of lines) {
+                            const jsonStr = line.replace(/^data:\s*/, '').trim();
+                            if (!jsonStr || jsonStr === '[DONE]') continue;
+                            const parsed = JSON.parse(jsonStr);
+                            if (parsed.usage) {
+                                extractedUsage = {
+                                    promptTokens: parsed.usage.prompt_tokens || 0,
+                                    completionTokens: parsed.usage.completion_tokens || 0,
+                                    totalTokens: parsed.usage.total_tokens || (parsed.usage.prompt_tokens || 0) + (parsed.usage.completion_tokens || 0),
+                                };
+                            }
+                        }
+                    } catch { /* ignore parse errors in partial chunks */ }
+                }
                 controller.enqueue(value);
             } catch (err: any) {
                 if (err?.code === 'ERR_INVALID_THIS') return;
@@ -39,6 +69,7 @@ export const createStreamProxy = (responseBody: ReadableStream<Uint8Array>, resp
         },
         cancel() {
             console.log(`⚠️ Stream cancelled by client after ${chunkCount} chunks, ${totalBytes} bytes`);
+            if (onComplete) onComplete(extractedUsage);
             try { reader.cancel(); } catch {}
         }
     });

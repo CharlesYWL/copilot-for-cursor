@@ -1,299 +1,616 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Copilot API Dashboard</title>
-    <style>
-        :root {
-            --bg-color: #fcfcfc;
-            --text-color: #1a1a1a;
-            --border-color: #e0e0e0;
-            --accent-gray: #666666;
-            --hover-bg: #f5f5f5;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Copilot Cursor Proxy — Dashboard</title>
+<style>
+:root {
+    --bg: #0a0a0a;
+    --bg-card: #141414;
+    --bg-hover: #1a1a1a;
+    --border: #222;
+    --border-light: #333;
+    --text: #e0e0e0;
+    --text-dim: #777;
+    --text-muted: #555;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --orange: #f0883e;
+    --radius: 8px;
+}
 
-        body {
-            font-family: 'Times New Roman', Times, serif; /* Roman style */
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 40px;
-            line-height: 1.6;
-            max-width: 900px;
-            margin-left: auto;
-            margin-right: auto;
-        }
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-        h1, h2, h3 {
-            font-weight: normal;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            margin-bottom: 1.5rem;
-            border-bottom: 1px solid var(--text-color);
-            padding-bottom: 10px;
-        }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
 
-        h1 { font-size: 2rem; margin-top: 0; }
-        h2 { font-size: 1.2rem; margin-top: 3rem; color: var(--accent-gray); border-bottom: 1px solid var(--border-color); }
+/* ── Header ─────────────────────────────────────── */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+}
+.header-title {
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.header-title .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    display: inline-block;
+}
+.header-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #1a2332;
+    color: var(--accent);
+    border: 1px solid #1a3050;
+}
 
-        .container {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
+/* ── Tabs ────────────────────────────────────────── */
+.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    padding: 0 24px;
+}
+.tab {
+    padding: 12px 20px;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all .15s;
+    user-select: none;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+}
 
-        /* Usage Section */
-        .usage-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
+/* ── Content ─────────────────────────────────────── */
+.content {
+    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
 
-        .card {
-            border: 1px solid var(--border-color);
-            padding: 20px;
-            background: white;
-            transition: all 0.2s ease;
-        }
-        
-        .card:hover {
-            border-color: var(--accent-gray);
-        }
+/* ── Cards ───────────────────────────────────────── */
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+.card-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+}
+.card-value {
+    font-size: 22px;
+    font-weight: 600;
+}
+.card-value.mono {
+    font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+    font-size: 14px;
+    color: var(--accent);
+    word-break: break-all;
+}
 
-        .label {
-            font-size: 0.85rem;
-            color: var(--accent-gray);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 5px;
-        }
+/* ── Copyable row ────────────────────────────────── */
+.copy-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.copy-btn {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 4px;
+    transition: all .15s;
+    flex-shrink: 0;
+}
+.copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+.copy-btn.copied { border-color: var(--green); color: var(--green); }
 
-        .value {
-            font-size: 1.2rem;
-            font-weight: bold;
-        }
+/* ── Tables ──────────────────────────────────────── */
+.table-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+.table-header {
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.table-header .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #1a2332;
+    color: var(--accent);
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+th {
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    cursor: default;
+}
+td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #1a1a1a;
+    vertical-align: middle;
+}
+tr:hover td { background: var(--bg-hover); }
+.status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+}
+.status-dot.ok { background: var(--green); }
+.status-dot.err { background: var(--red); }
+.model-badge {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #1a1a2e;
+    color: var(--purple);
+}
 
-        /* Models Table */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.95rem;
-            margin-top: 10px;
-        }
+/* ── Section titles ──────────────────────────────── */
+.section-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
 
-        th {
-            text-align: left;
-            padding: 15px;
-            border-bottom: 2px solid var(--text-color);
-            font-weight: normal;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 0.1em;
-        }
+/* ── Console ─────────────────────────────────────── */
+.console-wrap {
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 160px);
+    min-height: 400px;
+}
+.console-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: #0a0a0a;
+}
+.console-toolbar .title { font-size: 12px; color: var(--text-dim); }
+.console-toolbar button {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-dim);
+    padding: 4px 12px;
+    font-size: 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .15s;
+}
+.console-toolbar button:hover { border-color: var(--red); color: var(--red); }
+.console-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.log-line { display: block; }
+.log-line .ts { color: #555; margin-right: 8px; }
+.log-line.LOG .lvl { color: var(--green); }
+.log-line.INFO .lvl { color: var(--blue); }
+.log-line.WARN .lvl { color: var(--yellow); }
+.log-line.ERROR .lvl { color: var(--red); }
+.log-line.DEBUG .lvl { color: var(--purple); }
+.log-line .msg { color: #ccc; }
+.log-line.ERROR .msg { color: #f88; }
+.log-line.WARN .msg { color: #dda; }
 
-        td {
-            padding: 15px;
-            border-bottom: 1px solid var(--border-color);
-        }
+/* ── Responsive ──────────────────────────────────── */
+@media (max-width: 640px) {
+    .cards { grid-template-columns: 1fr 1fr; }
+    .content { padding: 16px; }
+}
 
-        tr:hover td {
-            background-color: var(--hover-bg);
-        }
-
-        .model-id {
-            font-family: 'Courier New', Courier, monospace; /* Monospace for code */
-            background: #f4f4f4;
-            padding: 4px 8px;
-            border-radius: 2px;
-            font-size: 0.9em;
-        }
-
-        .copy-btn {
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--accent-gray);
-            cursor: pointer;
-            padding: 4px 10px;
-            font-family: inherit;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            margin-left: 10px;
-            transition: all 0.2s;
-        }
-
-        .copy-btn:hover {
-            background: var(--text-color);
-            color: white;
-            border-color: var(--text-color);
-        }
-
-        .copy-btn.copied {
-            background: var(--text-color);
-            color: white;
-            border-color: var(--text-color);
-        }
-
-        #loading {
-            text-align: center;
-            color: var(--accent-gray);
-            font-style: italic;
-            padding: 40px;
-        }
-
-        .error {
-            color: #333;
-            border: 1px solid #333;
-            padding: 20px;
-            text-align: center;
-        }
-    </style>
+/* ── Misc ────────────────────────────────────────── */
+.empty-state {
+    text-align: center;
+    padding: 48px 16px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.num { font-variant-numeric: tabular-nums; }
+</style>
 </head>
 <body>
 
-    <h1>Copilot API Dashboard</h1>
+<!-- Header -->
+<div class="header">
+    <div class="header-title">
+        <span class="dot"></span>
+        Copilot Cursor Proxy
+    </div>
+    <span class="header-badge">localhost:4142</span>
+</div>
 
-    <div id="loading">Fetching data from Proxy...</div>
-    <div id="error-msg" class="error" style="display: none;"></div>
+<!-- Tabs -->
+<div class="tabs">
+    <div class="tab active" data-tab="endpoint">Endpoint</div>
+    <div class="tab" data-tab="usage">Usage</div>
+    <div class="tab" data-tab="console">Console Log</div>
+</div>
 
-    <div id="content" style="display: none;">
-        <!-- Usage Section -->
-        <h2>Account & Quota</h2>
-        <div class="usage-grid">
+<!-- Content -->
+<div class="content">
+
+    <!-- ═══════════ TAB 1: Endpoint ═══════════ -->
+    <div id="tab-endpoint" class="tab-panel active">
+        <div class="cards">
             <div class="card">
-                <div class="label">User</div>
-                <div class="value" id="user-login">-</div>
+                <div class="card-label">Local Endpoint</div>
+                <div class="copy-row">
+                    <div class="card-value mono" id="endpoint-url">http://localhost:4142/v1</div>
+                    <button class="copy-btn" onclick="copyText('http://localhost:4142/v1',this)">Copy</button>
+                </div>
             </div>
             <div class="card">
-                <div class="label">Plan</div>
-                <div class="value" id="plan-type">-</div>
+                <div class="card-label">API Key</div>
+                <div class="copy-row">
+                    <div class="card-value mono">dummy</div>
+                    <button class="copy-btn" onclick="copyText('dummy',this)">Copy</button>
+                </div>
             </div>
-            <div class="card">
-                <div class="label">Chat Quota</div>
-                <div class="value" id="chat-quota">-</div>
-            </div>
-            <div class="card">
-                <div class="label">Reset Date</div>
-                <div class="value" id="reset-date">-</div>
+            <div class="card" style="grid-column: 1 / -1">
+                <div class="card-label">Tunnel</div>
+                <div class="card-value" style="font-size:13px; color:var(--text-dim);">
+                    Configure your HTTPS tunnel separately (e.g. ngrok, cloudflared)
+                </div>
             </div>
         </div>
 
-        <!-- Models Section -->
-        <h2>Available Models <span style="font-size: 0.8rem; float: right; margin-top: 5px; color: var(--accent-gray);" id="model-count"></span></h2>
-        <p style="font-size: 0.9rem; color: #666; margin-bottom: 20px;">
-            ℹ️ Use the <strong>Cursor Model ID</strong> when configuring Cursor to bypass internal routing.
-        </p>
-        
-        <table id="models-table">
-            <thead>
-                <tr>
-                    <th>Model Name</th>
-                    <th>Original ID</th>
-                    <th>Cursor Model ID (Use This)</th>
-                </tr>
-            </thead>
-            <tbody id="models-list">
-                <!-- Rows injected here -->
-            </tbody>
-        </table>
+        <div class="section-title">Available Models</div>
+        <div class="table-wrap">
+            <div class="table-header">
+                Models <span class="badge" id="model-count">—</span>
+            </div>
+            <div id="models-loading" class="empty-state">Loading models…</div>
+            <table id="models-table" style="display:none">
+                <thead>
+                    <tr>
+                        <th>Model ID (use this)</th>
+                        <th>Original ID</th>
+                        <th>Display Name</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="models-body"></tbody>
+            </table>
+        </div>
     </div>
 
-    <script>
-        // Since dashboard is served by the proxy server itself, use relative paths!
-        const API_BASE = ''; 
+    <!-- ═══════════ TAB 2: Usage ═══════════ -->
+    <div id="tab-usage" class="tab-panel">
+        <div class="cards" id="usage-cards">
+            <div class="card">
+                <div class="card-label">Total Requests</div>
+                <div class="card-value num" id="stat-requests">0</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Prompt Tokens</div>
+                <div class="card-value num" id="stat-prompt">0</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Completion Tokens</div>
+                <div class="card-value num" id="stat-completion">0</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Total Tokens</div>
+                <div class="card-value num" id="stat-total">0</div>
+            </div>
+        </div>
 
-        async function fetchData() {
-            try {
-                // Fetch Usage (Proxy handles forwarding)
-                const usageRes = await fetch(`${API_BASE}/usage`);
-                if (!usageRes.ok) throw new Error('Failed to fetch usage');
-                const usageData = await usageRes.json();
+        <div class="section-title">Per-Model Breakdown</div>
+        <div class="table-wrap">
+            <table id="model-usage-table">
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Requests</th>
+                        <th>Prompt Tokens</th>
+                        <th>Completion Tokens</th>
+                        <th>Avg Duration</th>
+                        <th>Errors</th>
+                    </tr>
+                </thead>
+                <tbody id="model-usage-body"></tbody>
+            </table>
+        </div>
 
-                // Fetch Models (Proxy handles modification)
-                const modelsRes = await fetch(`${API_BASE}/v1/models`);
-                if (!modelsRes.ok) throw new Error('Failed to fetch models');
-                const modelsData = await modelsRes.json();
+        <div class="section-title">Recent Requests</div>
+        <div class="table-wrap">
+            <table id="recent-table">
+                <thead>
+                    <tr>
+                        <th style="width:30px"></th>
+                        <th>Model</th>
+                        <th>Prompt</th>
+                        <th>Completion</th>
+                        <th>Duration</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody id="recent-body"></tbody>
+            </table>
+        </div>
+        <div id="usage-empty" class="empty-state" style="display:none">
+            No requests recorded yet. Send a chat completion to see usage.
+        </div>
+    </div>
 
-                render(usageData, modelsData);
-            } catch (err) {
-                showError(err.message);
+    <!-- ═══════════ TAB 3: Console ═══════════ -->
+    <div id="tab-console" class="tab-panel">
+        <div class="console-wrap">
+            <div class="console-toolbar">
+                <span class="title" id="console-status">● Connected</span>
+                <button onclick="clearLogs()">Clear</button>
+            </div>
+            <div class="console-output" id="console-output"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ── Tab switching ──────────────────────────────────────────── */
+const tabs = document.querySelectorAll('.tab');
+tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+    if (t.dataset.tab === 'usage') fetchUsage();
+}));
+
+/* ── Helpers ────────────────────────────────────────────────── */
+function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    });
+}
+
+function fmtNum(n) {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return String(n);
+}
+
+function timeAgo(ts) {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 5) return 'just now';
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+}
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+/* ── Tab 1: Models ──────────────────────────────────────────── */
+async function fetchModels() {
+    try {
+        const res = await fetch('/v1/models');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const models = (data.data || []).sort((a, b) => a.id.localeCompare(b.id));
+        const prefix = 'cus-';
+
+        document.getElementById('model-count').textContent = models.length + ' models';
+        document.getElementById('models-loading').style.display = 'none';
+        const table = document.getElementById('models-table');
+        table.style.display = '';
+        const tbody = document.getElementById('models-body');
+        tbody.innerHTML = '';
+
+        models.forEach(m => {
+            const origId = m.id.startsWith(prefix) ? m.id.slice(prefix.length) : m.id;
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><span class="model-badge">' + esc(m.id) + '</span></td>' +
+                '<td style="color:var(--text-dim)">' + esc(origId) + '</td>' +
+                '<td style="color:var(--text-dim)">' + esc(m.display_name || m.id) + '</td>' +
+                '<td><button class="copy-btn" onclick="copyText(\'' + esc(m.id).replace(/'/g, "\\'") + '\',this)">Copy</button></td>';
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        document.getElementById('models-loading').textContent = 'Failed to load models: ' + e.message;
+    }
+}
+fetchModels();
+
+/* ── Tab 2: Usage ───────────────────────────────────────────── */
+let usageTimer = null;
+
+async function fetchUsage() {
+    try {
+        const res = await fetch('/api/usage');
+        if (!res.ok) return;
+        const d = await res.json();
+
+        document.getElementById('stat-requests').textContent = fmtNum(d.totalRequests);
+        document.getElementById('stat-prompt').textContent = fmtNum(d.totalPromptTokens);
+        document.getElementById('stat-completion').textContent = fmtNum(d.totalCompletionTokens);
+        document.getElementById('stat-total').textContent = fmtNum(d.totalTokens);
+
+        const empty = document.getElementById('usage-empty');
+        if (d.totalRequests === 0) {
+            empty.style.display = '';
+            document.getElementById('model-usage-table').parentElement.style.display = 'none';
+            document.getElementById('recent-table').parentElement.style.display = 'none';
+            return;
+        }
+        empty.style.display = 'none';
+        document.getElementById('model-usage-table').parentElement.style.display = '';
+        document.getElementById('recent-table').parentElement.style.display = '';
+
+        // Per-model
+        const mBody = document.getElementById('model-usage-body');
+        mBody.innerHTML = '';
+        (d.byModel || []).sort((a, b) => b.requests - a.requests).forEach(m => {
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><span class="model-badge">' + esc(m.model) + '</span></td>' +
+                '<td class="num">' + fmtNum(m.requests) + '</td>' +
+                '<td class="num">' + fmtNum(m.promptTokens) + '</td>' +
+                '<td class="num">' + fmtNum(m.completionTokens) + '</td>' +
+                '<td class="num">' + m.avgDuration + 'ms</td>' +
+                '<td class="num" style="color:' + (m.errors > 0 ? 'var(--red)' : 'var(--text-dim)') + '">' + m.errors + '</td>';
+            mBody.appendChild(tr);
+        });
+
+        // Recent requests
+        const rBody = document.getElementById('recent-body');
+        rBody.innerHTML = '';
+        (d.recentRequests || []).forEach(r => {
+            const ok = r.status < 400;
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><span class="status-dot ' + (ok ? 'ok' : 'err') + '"></span></td>' +
+                '<td><span class="model-badge">' + esc(r.model) + '</span></td>' +
+                '<td class="num">' + fmtNum(r.promptTokens) + '</td>' +
+                '<td class="num">' + fmtNum(r.completionTokens) + '</td>' +
+                '<td class="num">' + r.duration + 'ms</td>' +
+                '<td style="color:var(--text-dim)">' + timeAgo(r.timestamp) + '</td>';
+            rBody.appendChild(tr);
+        });
+    } catch (e) { /* silent */ }
+}
+
+// Auto-refresh usage every 5s when tab is active
+setInterval(() => {
+    if (document.getElementById('tab-usage').classList.contains('active')) fetchUsage();
+}, 5000);
+fetchUsage();
+
+/* ── Tab 3: Console ─────────────────────────────────────────── */
+const output = document.getElementById('console-output');
+let autoScroll = true;
+
+output.addEventListener('scroll', () => {
+    autoScroll = (output.scrollTop + output.clientHeight >= output.scrollHeight - 30);
+});
+
+function appendLine(ts, level, message) {
+    const d = new Date(ts);
+    const time = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const ms = String(d.getMilliseconds()).padStart(3, '0');
+    const span = document.createElement('span');
+    span.className = 'log-line ' + level;
+    span.innerHTML =
+        '<span class="ts">' + time + '.' + ms + '</span>' +
+        '<span class="lvl">[' + level + ']</span> ' +
+        '<span class="msg">' + esc(message) + '</span>';
+    output.appendChild(span);
+    if (autoScroll) output.scrollTop = output.scrollHeight;
+}
+
+function connectSSE() {
+    const status = document.getElementById('console-status');
+    const es = new EventSource('/api/logs/stream');
+
+    es.onopen = () => { status.textContent = '● Connected'; status.style.color = 'var(--green)'; };
+    es.onerror = () => { status.textContent = '● Disconnected'; status.style.color = 'var(--red)'; };
+
+    es.onmessage = (evt) => {
+        try {
+            const d = JSON.parse(evt.data);
+            if (d.type === 'init') {
+                output.innerHTML = '';
+                (d.lines || []).forEach(l => appendLine(l.timestamp, l.level, l.message));
+            } else if (d.type === 'line') {
+                appendLine(d.timestamp, d.level, d.message);
+            } else if (d.type === 'clear') {
+                output.innerHTML = '';
             }
-        }
+        } catch {}
+    };
+}
+connectSSE();
 
-        function render(usage, models) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('content').style.display = 'block';
-
-            // 1. Render Usage
-            document.getElementById('user-login').textContent = usage.login || 'Unknown';
-            document.getElementById('plan-type').textContent = (usage.copilot_plan || 'free').toUpperCase();
-            
-            // Check quota status
-            const chatSnapshot = usage.quota_snapshots?.chat;
-            if (chatSnapshot?.unlimited) {
-                document.getElementById('chat-quota').textContent = 'UNLIMITED';
-            } else {
-                document.getElementById('chat-quota').textContent = chatSnapshot?.remaining ?? '0';
-            }
-
-            // Date
-            const date = new Date(usage.quota_reset_date_utc || Date.now());
-            document.getElementById('reset-date').textContent = date.toLocaleDateString();
-
-            // 2. Render Models
-            const tbody = document.getElementById('models-list');
-            const modelList = models.data || [];
-            document.getElementById('model-count').textContent = `${modelList.length} MODELS FOUND`;
-
-            // Sort models alphabetically by ID
-            modelList.sort((a, b) => a.id.localeCompare(b.id));
-
-            modelList.forEach(m => {
-                // The proxy already adds the prefix to 'id' and 'display_name'
-                const prefix = "cus-";
-                const originalId = m.id.startsWith(prefix) ? m.id.slice(prefix.length) : m.id;
-
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td style="font-style: italic;">${m.display_name || m.id}</td>
-                    <td><span class="model-id" style="color: #888;">${originalId}</span></td>
-                    <td>
-                        <span class="model-id" style="font-weight: bold;">${m.id}</span>
-                        <button class="copy-btn" onclick="copyToClipboard('${m.id}', this)">Copy</button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function copyToClipboard(text, btn) {
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = btn.textContent;
-                btn.textContent = 'Copied';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.remove('copied');
-                }, 1500);
-            });
-        }
-
-        function showError(msg) {
-            document.getElementById('loading').style.display = 'none';
-            const errDiv = document.getElementById('error-msg');
-            errDiv.style.display = 'block';
-            errDiv.innerHTML = `
-                <strong>Connection Error</strong><br>
-                ${msg}<br><br>
-                Ensure both services are running:<br>
-                1. <code>npx copilot-api start</code> (Port 4141)<br>
-                2. <code>bun run proxy-router.ts</code> (Port 4142)
-            `;
-        }
-
-        // Start
-        fetchData();
-    </script>
+function clearLogs() {
+    fetch('/api/logs/clear', { method: 'POST' });
+}
+</script>
 </body>
 </html>
