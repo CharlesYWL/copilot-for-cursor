@@ -142,23 +142,35 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 
 ---
 
-## 🔒 Security: API Key Protection
+## 🔒 Security
 
-If you're using a tunnel (exposing to the public internet), set an API key:
+### Dashboard Password
 
-**Config location:**
-- Linux/macOS: `~/.local/share/copilot-api/config.json`
-- Windows: `%USERPROFILE%\.local\share\copilot-api\config.json`
+The dashboard is password-protected. On first visit, set a password to prevent unauthorized access.
 
-```json
-{
-  "auth": {
-    "apiKeys": ["your-secret-key-here"]
-  }
-}
-```
+### API Key Management
 
-Then use the same key as the **API Key** in Cursor settings.
+Manage API keys directly from the **Endpoint** tab in the dashboard:
+
+1. Toggle **"Require API Key"** to enable authentication
+2. Click **"+ Create Key"** to generate a new `cpk-xxx` key
+3. Copy the key (shown only once!) and paste it into Cursor's **API Key** field
+4. Enable/disable or delete keys as needed
+
+When enabled, all `/v1/*` requests must include `Authorization: Bearer <your-key>`.
+
+![Dashboard](./dashboard-preview.png)
+
+---
+
+## 📊 Dashboard
+
+Access the dashboard at **[http://localhost:4142](http://localhost:4142)**
+
+Three tabs:
+- **Endpoint** — Proxy URL, API key management, model list
+- **Usage** — Request stats, token counts, per-model breakdown, recent requests
+- **Console Log** — Real-time proxy logs with color-coded levels
 
 ---
 
@@ -170,7 +182,7 @@ Then use the same key as the **API Key** in Cursor settings.
 | Streaming | ✅ Works |
 | Plan mode | ✅ Works |
 | Agent mode | ✅ Works |
-| GPT-5.x models | ✅ Works (via Responses API bridge) |
+| GPT-5.x models | ⚠️ Blocked by copilot-api `max_tokens` bug |
 | Extended thinking (chain-of-thought) | ❌ Stripped |
 | Prompt caching (`cache_control`) | ❌ Stripped |
 | Claude Vision | ❌ Not supported via Copilot |
