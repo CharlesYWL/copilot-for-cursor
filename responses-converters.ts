@@ -89,7 +89,7 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
             else if (eventType === 'response.output_item.added' && event.item?.type === 'function_call') {
                 const delta: any = {
                     tool_calls: [{
-                        index: toolCallIndex,
+                        index: toolCallIndex++,
                         id: event.item.call_id || event.item.id,
                         type: 'function',
                         function: { name: event.item.name, arguments: '' },
@@ -103,7 +103,7 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
             else if (eventType === 'response.function_call_arguments.delta') {
                 controller.enqueue(encoder.encode(makeChatChunk({
                     tool_calls: [{
-                        index: toolCallIndex,
+                        index: toolCallIndex - 1,
                         function: { arguments: event.delta },
                     }]
                 })));
@@ -111,7 +111,7 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
             }
 
             else if (eventType === 'response.output_item.done' && event.item?.type === 'function_call') {
-                toolCallIndex++;
+                // toolCallIndex already incremented on 'added'
             }
 
             else if (eventType === 'response.completed') {

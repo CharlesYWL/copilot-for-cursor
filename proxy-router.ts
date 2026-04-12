@@ -20,7 +20,8 @@ Bun.serve({
 
     if (url.pathname === "/" || url.pathname === "/dashboard.html") {
       try {
-        const dashboardContent = await Bun.file("dashboard.html").text();
+        const dashboardPath = import.meta.dir + "/dashboard.html";
+        const dashboardContent = await Bun.file(dashboardPath).text();
         return new Response(dashboardContent, { headers: { "Content-Type": "text/html" } });
       } catch (e) {
         return new Response("Dashboard not found.", { status: 404 });
@@ -67,10 +68,25 @@ Bun.serve({
 
         const needsResponsesAPI = targetModel.match(/^gpt-5\.[2-9]|^gpt-5\.\d+-codex|^o[1-9]|^goldeneye/i);
         
+        // For models that need max_completion_tokens instead of max_tokens
+        const needsMaxCompletionTokens = targetModel.match(/^gpt-5\.[2-9]|^gpt-5\.\d+-codex|^goldeneye/i);
+        if (needsMaxCompletionTokens && json.max_tokens) {
+            json.max_completion_tokens = json.max_tokens;
+            delete json.max_tokens;
+            console.log(`🔧 Converted max_tokens → max_completion_tokens`);
+        }
+
+        // Try Responses API first for models that may need it; fall back to chat completions
         if (needsResponsesAPI) {
-            console.log(`🔀 Model ${targetModel} requires Responses API — converting`);
+            console.log(`🔀 Model ${targetModel} — trying Responses API bridge`);
             const chatId = `chatcmpl-proxy-${++responseCounter}`;
-            return await handleResponsesAPIBridge(json, req, chatId, TARGET_URL);
+            try {
+                const result = await handleResponsesAPIBridge(json, req, chatId, TARGET_URL);
+                if (result.status !== 404) return result;
+                console.log(`⚠️ Responses API returned 404 — falling back to chat/completions`);
+            } catch (e) {
+                console.log(`⚠️ Responses API failed — falling back to chat/completions`);
+            }
         }
 
         const hasVisionContent = (messages: any[]) => messages?.some(msg => 
