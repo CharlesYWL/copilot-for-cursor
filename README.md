@@ -161,6 +161,10 @@ When enabled, all `/v1/*` requests must include `Authorization: Bearer <your-key
 
 ![Dashboard](./dashboard-preview.png)
 
+| Usage Tab | Console Log Tab |
+|---|---|
+| ![Usage](./screenshot-usage.png) | ![Console](./screenshot-console.png) |
+
 ---
 
 ## 📊 Dashboard
