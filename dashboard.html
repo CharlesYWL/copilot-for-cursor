@@ -307,6 +307,39 @@ tr:hover td { background: var(--bg-hover); }
     background: var(--green);
     flex-shrink: 0;
 }
+/* ── Toggle switch ──────────────────────────────── */
+.toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    display: inline-block;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: #333;
+    border-radius: 24px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: 0.3s;
+}
+.toggle input:checked + .toggle-slider {
+    background: #22c55e;
+}
+.toggle input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
 </style>
 </head>
 <body>
@@ -352,6 +385,38 @@ tr:hover td { background: var(--bg-hover); }
                 <div class="card-value" style="font-size:13px; color:var(--text-dim);">
                     Configure your HTTPS tunnel separately (e.g. ngrok, cloudflared)
                 </div>
+            </div>
+        </div>
+
+        <!-- API Key Management -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; border: none; padding: 0;">API Key Protection</h3>
+                <label class="toggle">
+                    <input type="checkbox" id="requireKeyToggle" onchange="toggleRequireKey(this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <p id="authStatus" style="color: #888; font-size: 13px; margin-bottom: 16px;">Loading...</p>
+            
+            <div id="keysSection" style="display: none;">
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <input type="text" id="keyNameInput" placeholder="Key name (e.g. Cursor)" 
+                        style="flex:1; background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px;">
+                    <button onclick="createKey()" style="background: #22c55e; color: #000; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">+ Create Key</button>
+                </div>
+                
+                <!-- Newly created key (shown once) -->
+                <div id="newKeyAlert" style="display: none; background: #1a2e1a; border: 1px solid #22c55e; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                    <div style="color: #22c55e; font-weight: 600; margin-bottom: 4px;">⚠️ Copy this key now — it won't be shown again!</div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <code id="newKeyValue" style="flex: 1; background: #111; padding: 8px; border-radius: 4px; font-size: 13px; color: #22c55e; word-break: break-all;"></code>
+                        <button onclick="copyNewKey()" style="background: #333; border: none; color: #fff; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Copy</button>
+                    </div>
+                </div>
+                
+                <!-- Keys list -->
+                <div id="keysList"></div>
             </div>
         </div>
 
@@ -541,6 +606,79 @@ async function fetchModels() {
     }
 }
 fetchModels();
+
+/* ── Tab 1: API Key Management ─────────────────────────────── */
+let authConfig = { requireApiKey: false, keys: [] };
+
+async function loadAuthConfigUI() {
+    try {
+        const resp = await fetch('/api/keys');
+        authConfig = await resp.json();
+        document.getElementById('requireKeyToggle').checked = authConfig.requireApiKey;
+        document.getElementById('authStatus').textContent = authConfig.requireApiKey 
+            ? '🔒 API key required for all requests' 
+            : '🔓 No authentication — anyone with the URL can use the proxy';
+        document.getElementById('keysSection').style.display = 'block';
+        renderKeys();
+    } catch (e) {
+        document.getElementById('authStatus').textContent = 'Failed to load auth config';
+    }
+}
+
+function renderKeys() {
+    const list = document.getElementById('keysList');
+    if (authConfig.keys.length === 0) {
+        list.innerHTML = '<div style="color: #666; font-size: 13px; padding: 12px 0;">No API keys created yet.</div>';
+        return;
+    }
+    list.innerHTML = authConfig.keys.map(k => `
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #222;">
+            <label class="toggle" style="flex-shrink: 0;">
+                <input type="checkbox" ${k.active ? 'checked' : ''} onchange="toggleKey('${esc(k.id)}', this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 500; font-size: 14px;">${esc(k.name)}</div>
+                <code style="color: #888; font-size: 12px;">${esc(k.key)}</code>
+            </div>
+            <div style="color: #666; font-size: 12px; white-space: nowrap;">${timeAgo(k.createdAt)}</div>
+            <button onclick="deleteKey('${esc(k.id)}')" style="background: none; border: none; color: #666; cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete">🗑</button>
+        </div>
+    `).join('');
+}
+
+async function toggleRequireKey(enabled) {
+    await fetch('/api/settings/auth', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ requireApiKey: enabled }) });
+    loadAuthConfigUI();
+}
+
+async function createKey() {
+    const name = document.getElementById('keyNameInput').value.trim() || 'Untitled';
+    const resp = await fetch('/api/keys', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+    const newKey = await resp.json();
+    document.getElementById('newKeyAlert').style.display = 'block';
+    document.getElementById('newKeyValue').textContent = newKey.key;
+    document.getElementById('keyNameInput').value = '';
+    loadAuthConfigUI();
+}
+
+function copyNewKey() {
+    navigator.clipboard.writeText(document.getElementById('newKeyValue').textContent);
+}
+
+async function toggleKey(id, active) {
+    await fetch('/api/keys/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
+    loadAuthConfigUI();
+}
+
+async function deleteKey(id) {
+    if (!confirm('Delete this API key?')) return;
+    await fetch('/api/keys/' + id, { method: 'DELETE' });
+    document.getElementById('newKeyAlert').style.display = 'none';
+    loadAuthConfigUI();
+}
+
+loadAuthConfigUI();
 
 /* ── Tab 2: Usage ───────────────────────────────────────────── */
 let usageTimer = null;

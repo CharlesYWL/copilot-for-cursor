@@ -3,6 +3,7 @@ import { handleResponsesAPIBridge } from './responses-bridge';
 import { createStreamProxy } from './stream-proxy';
 import { logIncomingRequest, logTransformedRequest } from './debug-logger';
 import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type RequestLog } from './usage-db';
+import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from './auth-config';
 
 // ── Console capture for SSE streaming ─────────────────────────────────────────
 interface ConsoleLine {
@@ -110,6 +111,52 @@ Bun.serve({
         });
     }
 
+    // ── API Key management endpoints ──────────────────────────────────
+    const corsHeaders = { "Access-Control-Allow-Origin": "*" };
+
+    if (url.pathname === "/api/keys" && req.method === "GET") {
+        const config = loadAuthConfig();
+        const maskedKeys = config.keys.map(k => ({
+            ...k,
+            key: k.key.slice(0, 12) + '...'
+        }));
+        return Response.json({ requireApiKey: config.requireApiKey, keys: maskedKeys }, { headers: corsHeaders });
+    }
+
+    if (url.pathname === "/api/keys" && req.method === "POST") {
+        const { name } = await req.json();
+        const config = loadAuthConfig();
+        const newKey = generateApiKey(name || 'Untitled');
+        config.keys.push(newKey);
+        saveAuthConfig(config);
+        return Response.json(newKey, { headers: corsHeaders });
+    }
+
+    if (url.pathname.startsWith("/api/keys/") && req.method === "PUT") {
+        const id = url.pathname.split('/').pop();
+        const { active } = await req.json();
+        const config = loadAuthConfig();
+        const key = config.keys.find(k => k.id === id);
+        if (key) { key.active = active; saveAuthConfig(config); }
+        return Response.json({ ok: true }, { headers: corsHeaders });
+    }
+
+    if (url.pathname.startsWith("/api/keys/") && req.method === "DELETE") {
+        const id = url.pathname.split('/').pop();
+        const config = loadAuthConfig();
+        config.keys = config.keys.filter(k => k.id !== id);
+        saveAuthConfig(config);
+        return Response.json({ ok: true }, { headers: corsHeaders });
+    }
+
+    if (url.pathname === "/api/settings/auth" && req.method === "PUT") {
+        const { requireApiKey } = await req.json();
+        const config = loadAuthConfig();
+        config.requireApiKey = requireApiKey;
+        saveAuthConfig(config);
+        return Response.json({ ok: true }, { headers: corsHeaders });
+    }
+
     // ── Proxy logic ───────────────────────────────────────────────────────
     const targetUrl = new URL(url.pathname + url.search, TARGET_URL);
 
@@ -125,6 +172,19 @@ Bun.serve({
 
     try {
       if (req.method === "POST" && url.pathname.includes("/chat/completions")) {
+        // Check API key if required
+        const authConfig = loadAuthConfig();
+        if (authConfig.requireApiKey) {
+            const authHeader = req.headers.get('authorization');
+            const providedKey = authHeader?.replace('Bearer ', '');
+            if (!providedKey || !validateApiKey(providedKey)) {
+                return Response.json(
+                    { error: { message: "Invalid API key. Generate one from the dashboard.", type: "invalid_api_key" } },
+                    { status: 401, headers: { "Access-Control-Allow-Origin": "*" } }
+                );
+            }
+        }
+
         const startTime = Date.now();
         let json = await req.json();
 
@@ -244,6 +304,19 @@ Bun.serve({
       }
 
       if (req.method === "GET" && url.pathname.includes("/models")) {
+        // Check API key if required
+        const authConfig = loadAuthConfig();
+        if (authConfig.requireApiKey) {
+            const authHeader = req.headers.get('authorization');
+            const providedKey = authHeader?.replace('Bearer ', '');
+            if (!providedKey || !validateApiKey(providedKey)) {
+                return Response.json(
+                    { error: { message: "Invalid API key. Generate one from the dashboard.", type: "invalid_api_key" } },
+                    { status: 401, headers: { "Access-Control-Allow-Origin": "*" } }
+                );
+            }
+        }
+
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
         const response = await fetch(targetUrl.toString(), { method: "GET", headers: headers });
