@@ -138,7 +138,7 @@ Bun.serve({
             return Response.json({ error: "`name` must be a string if provided" }, { status: 400, headers: corsHeaders });
         }
         const config = loadAuthConfig();
-        const newKey = generateApiKey((name as string | undefined) || 'Untitled');
+        const newKey = generateApiKey(name || 'Untitled');
         config.keys.push(newKey);
         saveAuthConfig(config);
         return Response.json(newKey, { headers: corsHeaders });

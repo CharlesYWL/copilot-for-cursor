@@ -585,7 +585,7 @@ function esc(s) {
 /* ── Tab 1: Models ──────────────────────────────────────────── */
 async function fetchModels() {
     try {
-        // Use internal /api/models endpoint to bypass API key auth for dashboard
+        // Fetch via /api/models to bypass API key auth for dashboard
         const res = await fetch('/api/models');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();

@@ -106,7 +106,7 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
             }
 
             else if (eventType === 'response.function_call_arguments.delta') {
-                if (toolCallIndex <= 0) continue; // Guard against out-of-order events
+                if (toolCallIndex < 1) continue; // Guard against out-of-order events
                 controller.enqueue(encoder.encode(makeChatChunk({
                     tool_calls: [{
                         index: toolCallIndex - 1,
