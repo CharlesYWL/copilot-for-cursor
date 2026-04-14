@@ -46,7 +46,7 @@ Copy the HTTPS URL (e.g., `https://xxxxx.trycloudflare.com`).
 
 ## 🏗 Architecture
 
-```
+```text
 Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → GitHub Copilot
 ```
 

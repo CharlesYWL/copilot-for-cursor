@@ -1,5 +1,4 @@
-export async function convertResponsesSyncToChatCompletions(response: Response, model: string, chatId: string, corsHeaders: any) {
-    const data = await response.json() as any;
+export function convertResponsesSyncToChatCompletions(data: any, model: string, chatId: string, corsHeaders: any) {
     const result: any = {
         id: chatId,
         object: 'chat.completion',
@@ -49,7 +48,13 @@ export async function convertResponsesSyncToChatCompletions(response: Response, 
 }
 
 export function convertResponsesStreamToChatCompletions(response: Response, model: string, chatId: string, corsHeaders: any) {
-    const reader = response.body!.getReader();
+    if (!response.body) {
+        return new Response(JSON.stringify({ error: 'No response body' }), {
+            status: 502,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+    }
+    const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
     let buffer = '';
@@ -101,6 +106,7 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
             }
 
             else if (eventType === 'response.function_call_arguments.delta') {
+                if (toolCallIndex < 1) continue; // Guard against out-of-order events
                 controller.enqueue(encoder.encode(makeChatChunk({
                     tool_calls: [{
                         index: toolCallIndex - 1,

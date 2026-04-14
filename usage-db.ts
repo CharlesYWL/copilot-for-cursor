@@ -1,4 +1,5 @@
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, existsSync, readFileSync } from 'fs';
+import { writeFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 
@@ -86,7 +87,7 @@ const loadSync = (): UsageData => {
 const saveToDisk = async () => {
     try {
         data.lastSavedAt = Date.now();
-        writeFileSync(USAGE_FILE, JSON.stringify(data, null, 2), 'utf-8');
+        await writeFile(USAGE_FILE, JSON.stringify(data, null, 2), 'utf-8');
     } catch (e) {
         console.error('Failed to save usage data:', e);
     }
@@ -205,6 +206,6 @@ export const flushToDisk = async () => {
     await saveToDisk();
 };
 
-process.on('beforeExit', () => { flushToDisk(); });
+process.on('beforeExit', async () => { await flushToDisk(); });
 process.on('SIGINT', async () => { await flushToDisk(); process.exit(0); });
 process.on('SIGTERM', async () => { await flushToDisk(); process.exit(0); });
