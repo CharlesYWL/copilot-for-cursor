@@ -1,6 +1,11 @@
 import { convertResponsesSyncToChatCompletions, convertResponsesStreamToChatCompletions } from './responses-converters';
 
-export async function handleResponsesAPIBridge(json: any, req: Request, chatId: string, targetUrl: string) {
+export interface BridgeResult {
+    response: Response;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+export async function handleResponsesAPIBridge(json: any, req: Request, chatId: string, targetUrl: string): Promise<BridgeResult> {
     const corsHeaders = { "Access-Control-Allow-Origin": "*" };
 
     const responsesReq: any = {
@@ -55,7 +60,7 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
 
             return {
                 role: m.role === 'assistant' ? 'assistant' : 'user',
-                content: typeof content === 'string' ? content : content,
+                content,
             };
         }).flat();
     } else {
@@ -96,6 +101,7 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
     headers.set("host", responsesUrl.host);
     headers.set("content-type", "application/json");
     headers.set("content-length", String(new TextEncoder().encode(responsesBody).length));
+    headers.delete("authorization"); // Don't leak proxy API keys upstream
 
     const response = await fetch(responsesUrl.toString(), {
         method: "POST",
@@ -108,12 +114,28 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
     if (!response.ok) {
         const errText = await response.text();
         console.error(`❌ Responses API Error (${response.status}):`, errText);
-        return new Response(errText, { status: response.status, headers: corsHeaders });
+        return {
+            response: new Response(errText, { status: response.status, headers: corsHeaders }),
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        };
     }
 
     if (json.stream && response.body) {
-        return convertResponsesStreamToChatCompletions(response, json.model, chatId, corsHeaders);
+        return {
+            response: convertResponsesStreamToChatCompletions(response, json.model, chatId, corsHeaders),
+            // Streaming usage is embedded in the stream; not available synchronously
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        };
     } else {
-        return convertResponsesSyncToChatCompletions(response, json.model, chatId, corsHeaders);
+        const data = await response.json() as any;
+        const usage = data.usage ? {
+            promptTokens: data.usage.input_tokens || 0,
+            completionTokens: data.usage.output_tokens || 0,
+            totalTokens: data.usage.total_tokens || 0,
+        } : { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+        return {
+            response: convertResponsesSyncToChatCompletions(data, json.model, chatId, corsHeaders),
+            usage,
+        };
     }
 }

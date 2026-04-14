@@ -20,15 +20,19 @@ const CONFIG_PATH = join(CONFIG_DIR, 'auth.json');
 
 const DEFAULT_CONFIG: AuthConfig = { requireApiKey: false, keys: [] };
 
+let cachedConfig: AuthConfig | null = null;
+
 export function loadAuthConfig(): AuthConfig {
+    if (cachedConfig) return cachedConfig;
     try {
         if (!existsSync(CONFIG_PATH)) return { ...DEFAULT_CONFIG, keys: [] };
         const raw = readFileSync(CONFIG_PATH, 'utf-8');
         const parsed = JSON.parse(raw);
-        return {
+        cachedConfig = {
             requireApiKey: !!parsed.requireApiKey,
             keys: Array.isArray(parsed.keys) ? parsed.keys : [],
         };
+        return cachedConfig;
     } catch {
         return { ...DEFAULT_CONFIG, keys: [] };
     }
@@ -37,6 +41,7 @@ export function loadAuthConfig(): AuthConfig {
 export function saveAuthConfig(config: AuthConfig): void {
     if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
     writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+    cachedConfig = null; // Invalidate cache on write
 }
 
 function randomHex(bytes: number): string {

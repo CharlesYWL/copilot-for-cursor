@@ -354,10 +354,10 @@ tr:hover td { background: var(--bg-hover); }
 </div>
 
 <!-- Tabs -->
-<div class="tabs">
-    <div class="tab active" data-tab="endpoint">Endpoint</div>
-    <div class="tab" data-tab="usage">Usage</div>
-    <div class="tab" data-tab="console">Console Log</div>
+<div class="tabs" role="tablist">
+    <div class="tab active" data-tab="endpoint" role="tab" tabindex="0" aria-selected="true">Endpoint</div>
+    <div class="tab" data-tab="usage" role="tab" tabindex="0" aria-selected="false">Usage</div>
+    <div class="tab" data-tab="console" role="tab" tabindex="0" aria-selected="false">Console Log</div>
 </div>
 
 <!-- Content -->
@@ -537,13 +537,20 @@ tr:hover td { background: var(--bg-hover); }
 <script>
 /* ── Tab switching ──────────────────────────────────────────── */
 const tabs = document.querySelectorAll('.tab');
-tabs.forEach(t => t.addEventListener('click', () => {
-    tabs.forEach(x => x.classList.remove('active'));
+function switchTab(t) {
+    tabs.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     t.classList.add('active');
+    t.setAttribute('aria-selected', 'true');
     document.getElementById('tab-' + t.dataset.tab).classList.add('active');
     if (t.dataset.tab === 'usage') fetchUsage();
-}));
+}
+tabs.forEach(t => {
+    t.addEventListener('click', () => switchTab(t));
+    t.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(t); }
+    });
+});
 
 /* ── Helpers ────────────────────────────────────────────────── */
 function copyText(text, btn) {
@@ -578,7 +585,8 @@ function esc(s) {
 /* ── Tab 1: Models ──────────────────────────────────────────── */
 async function fetchModels() {
     try {
-        const res = await fetch('/v1/models');
+        // Use internal /api/models endpoint to bypass API key auth for dashboard
+        const res = await fetch('/api/models');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         const models = (data.data || []).sort((a, b) => a.id.localeCompare(b.id));
@@ -598,7 +606,9 @@ async function fetchModels() {
                 '<td><span class="model-badge">' + esc(m.id) + '</span></td>' +
                 '<td style="color:var(--text-dim)">' + esc(origId) + '</td>' +
                 '<td style="color:var(--text-dim)">' + esc(m.display_name || m.id) + '</td>' +
-                '<td><button class="copy-btn" onclick="copyText(\'' + esc(m.id).replace(/'/g, "\\'") + '\',this)">Copy</button></td>';
+                '<td><button class="copy-btn">Copy</button></td>';
+            const btn = tr.querySelector('.copy-btn');
+            btn.addEventListener('click', function() { copyText(m.id, this); });
             tbody.appendChild(tr);
         });
     } catch (e) {
@@ -631,10 +641,13 @@ function renderKeys() {
         list.innerHTML = '<div style="color: #666; font-size: 13px; padding: 12px 0;">No API keys created yet.</div>';
         return;
     }
-    list.innerHTML = authConfig.keys.map(k => `
-        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #222;">
+    list.innerHTML = '';
+    authConfig.keys.forEach(k => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #222;';
+        row.innerHTML = `
             <label class="toggle" style="flex-shrink: 0;">
-                <input type="checkbox" ${k.active ? 'checked' : ''} onchange="toggleKey('${esc(k.id)}', this.checked)">
+                <input type="checkbox" ${k.active ? 'checked' : ''}>
                 <span class="toggle-slider"></span>
             </label>
             <div style="flex: 1; min-width: 0;">
@@ -642,9 +655,12 @@ function renderKeys() {
                 <code style="color: #888; font-size: 12px;">${esc(k.key)}</code>
             </div>
             <div style="color: #666; font-size: 12px; white-space: nowrap;">${timeAgo(k.createdAt)}</div>
-            <button onclick="deleteKey('${esc(k.id)}')" style="background: none; border: none; color: #666; cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete">🗑</button>
-        </div>
-    `).join('');
+            <button style="background: none; border: none; color: #666; cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete">🗑</button>
+        `;
+        row.querySelector('input[type="checkbox"]').addEventListener('change', function() { toggleKey(k.id, this.checked); });
+        row.querySelector('button[title="Delete"]').addEventListener('click', function() { deleteKey(k.id); });
+        list.appendChild(row);
+    });
 }
 
 async function toggleRequireKey(enabled) {

@@ -124,9 +124,21 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/keys" && req.method === "POST") {
-        const { name } = await req.json();
+        let body: unknown;
+        try {
+            body = await req.json();
+        } catch {
+            return Response.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders });
+        }
+        if (typeof body !== 'object' || body === null) {
+            return Response.json({ error: "Request body must be a JSON object" }, { status: 400, headers: corsHeaders });
+        }
+        const { name } = body as { name?: unknown };
+        if (name !== undefined && typeof name !== 'string') {
+            return Response.json({ error: "`name` must be a string if provided" }, { status: 400, headers: corsHeaders });
+        }
         const config = loadAuthConfig();
-        const newKey = generateApiKey(name || 'Untitled');
+        const newKey = generateApiKey((name as string | undefined) || 'Untitled');
         config.keys.push(newKey);
         saveAuthConfig(config);
         return Response.json(newKey, { headers: corsHeaders });
@@ -157,6 +169,28 @@ Bun.serve({
         return Response.json({ ok: true }, { headers: corsHeaders });
     }
 
+    // ── Dashboard API: model list (bypasses API key auth) ──────────────
+    if (url.pathname === "/api/models" && req.method === "GET") {
+        try {
+            const modelsUrl = new URL('/v1/models', TARGET_URL);
+            const response = await fetch(modelsUrl.toString());
+            const data = await response.json();
+            if (data.data && Array.isArray(data.data)) {
+                data.data = data.data.map((model: any) => ({
+                    ...model,
+                    id: PREFIX + model.id,
+                    display_name: PREFIX + (model.display_name || model.id)
+                }));
+            }
+            return new Response(JSON.stringify(data), {
+                status: response.status,
+                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            });
+        } catch (e: any) {
+            return Response.json({ error: e?.message || 'Failed to fetch models' }, { status: 502, headers: corsHeaders });
+        }
+    }
+
     // ── Proxy logic ───────────────────────────────────────────────────────
     const targetUrl = new URL(url.pathname + url.search, TARGET_URL);
 
@@ -170,9 +204,8 @@ Bun.serve({
       });
     }
 
-    try {
-      if (req.method === "POST" && url.pathname.includes("/chat/completions")) {
-        // Check API key if required
+    // ── Enforce API key auth on all /v1/* routes ──────────────────────────
+    if (url.pathname.startsWith("/v1/")) {
         const authConfig = loadAuthConfig();
         if (authConfig.requireApiKey) {
             const authHeader = req.headers.get('authorization');
@@ -184,7 +217,10 @@ Bun.serve({
                 );
             }
         }
+    }
 
+    try {
+      if (req.method === "POST" && url.pathname.includes("/chat/completions")) {
         const startTime = Date.now();
         let json = await req.json();
 
@@ -207,6 +243,7 @@ Bun.serve({
 
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
+        headers.delete("authorization"); // Don't leak proxy API keys upstream
 
         const needsResponsesAPI = targetModel.match(/^gpt-5\.[2-9]|^gpt-5\.\d+-codex|^o[1-9]|^goldeneye/i);
         
@@ -220,13 +257,15 @@ Bun.serve({
             console.log(`🔀 Model ${targetModel} — using Responses API bridge`);
             const chatId = `chatcmpl-proxy-${++responseCounter}`;
             try {
-                const result = await handleResponsesAPIBridge(json, req, chatId, TARGET_URL);
+                const bridgeResult = await handleResponsesAPIBridge(json, req, chatId, TARGET_URL);
                 addRequestLog({
                     id: getNextRequestId(), timestamp: startTime, model: targetModel,
-                    promptTokens: 0, completionTokens: 0, totalTokens: 0,
-                    status: result.status, duration: Date.now() - startTime, stream: !!json.stream,
+                    promptTokens: bridgeResult.usage.promptTokens,
+                    completionTokens: bridgeResult.usage.completionTokens,
+                    totalTokens: bridgeResult.usage.totalTokens,
+                    status: bridgeResult.response.status, duration: Date.now() - startTime, stream: !!json.stream,
                 });
-                return result;
+                return bridgeResult.response;
             } catch (e: any) {
                 console.error(`❌ Responses API bridge failed for ${targetModel}:`, e?.message || e);
                 return new Response(
@@ -303,21 +342,9 @@ Bun.serve({
       }
 
       if (req.method === "GET" && url.pathname.includes("/models")) {
-        // Check API key if required
-        const authConfig = loadAuthConfig();
-        if (authConfig.requireApiKey) {
-            const authHeader = req.headers.get('authorization');
-            const providedKey = authHeader?.replace('Bearer ', '');
-            if (!providedKey || !validateApiKey(providedKey)) {
-                return Response.json(
-                    { error: { message: "Invalid API key. Generate one from the dashboard.", type: "invalid_api_key" } },
-                    { status: 401, headers: { "Access-Control-Allow-Origin": "*" } }
-                );
-            }
-        }
-
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
+        headers.delete("authorization"); // Don't leak proxy API keys upstream
         const response = await fetch(targetUrl.toString(), { method: "GET", headers: headers });
         const data = await response.json();
         
@@ -336,6 +363,7 @@ Bun.serve({
 
       const headers = new Headers(req.headers);
       headers.set("host", targetUrl.host);
+      headers.delete("authorization"); // Don't leak proxy API keys upstream
       const response = await fetch(targetUrl.toString(), {
         method: req.method,
         headers: headers,

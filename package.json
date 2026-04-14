@@ -14,7 +14,7 @@
   "scripts": {
     "build": "bun build start.ts proxy-router.ts anthropic-transforms.ts responses-bridge.ts responses-converters.ts stream-proxy.ts debug-logger.ts auth-config.ts --outdir dist --target node",
     "dev": "bun run start.ts",
-    "start": "node dist/start.js"
+    "start": "bun dist/start.js"
   },
   "keywords": [
     "copilot",
