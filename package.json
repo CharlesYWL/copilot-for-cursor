@@ -1,6 +1,6 @@
 {
   "name": "copilot-cursor-proxy",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Proxy that bridges GitHub Copilot API to Cursor IDE — translates Anthropic format, bridges Responses API for GPT 5.x, and more",
   "bin": {
     "copilot-cursor-proxy": "bin/cli.js"
@@ -12,7 +12,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build start.ts proxy-router.ts anthropic-transforms.ts responses-bridge.ts responses-converters.ts stream-proxy.ts debug-logger.ts auth-config.ts --outdir dist --target node",
+    "build": "bun build start.ts proxy-router.ts anthropic-transforms.ts responses-bridge.ts responses-converters.ts stream-proxy.ts debug-logger.ts auth-config.ts upstream-auth.ts --outdir dist --target node",
     "dev": "bun run start.ts",
     "start": "bun dist/start.js"
   },

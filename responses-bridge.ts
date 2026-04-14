@@ -1,4 +1,5 @@
 import { convertResponsesSyncToChatCompletions, convertResponsesStreamToChatCompletions } from './responses-converters';
+import { getUpstreamAuthHeader } from './upstream-auth';
 
 export interface BridgeResult {
     response: Response;
@@ -101,7 +102,7 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
     headers.set("host", responsesUrl.host);
     headers.set("content-type", "application/json");
     headers.set("content-length", String(new TextEncoder().encode(responsesBody).length));
-    headers.delete("authorization"); // Don't leak proxy API keys upstream
+    headers.set("authorization", getUpstreamAuthHeader());
 
     const response = await fetch(responsesUrl.toString(), {
         method: "POST",

@@ -4,6 +4,7 @@ import { createStreamProxy } from './stream-proxy';
 import { logIncomingRequest, logTransformedRequest } from './debug-logger';
 import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type RequestLog } from './usage-db';
 import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from './auth-config';
+import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, deleteUpstreamApiKey } from './upstream-auth';
 
 // ── Console capture for SSE streaming ─────────────────────────────────────────
 interface ConsoleLine {
@@ -169,11 +170,40 @@ Bun.serve({
         return Response.json({ ok: true }, { headers: corsHeaders });
     }
 
+    // ── Upstream (copilot-api) key management ────────────────────────
+    if (url.pathname === "/api/upstream-keys" && req.method === "GET") {
+        const keys = getUpstreamApiKeys();
+        const masked = keys.map(k => k.slice(0, 14) + '...' + k.slice(-4));
+        return Response.json({ keys: masked, count: keys.length }, { headers: corsHeaders });
+    }
+
+    if (url.pathname === "/api/upstream-keys" && req.method === "POST") {
+        try {
+            const newKey = createUpstreamApiKey();
+            return Response.json({ key: newKey }, { headers: corsHeaders });
+        } catch (e: any) {
+            return Response.json({ error: e?.message || 'Failed to create key' }, { status: 500, headers: corsHeaders });
+        }
+    }
+
+    if (url.pathname.startsWith("/api/upstream-keys/") && req.method === "DELETE") {
+        const keyPrefix = decodeURIComponent(url.pathname.split('/').pop() || '');
+        const keys = getUpstreamApiKeys();
+        const match = keys.find(k => k.startsWith(keyPrefix) || k.endsWith(keyPrefix));
+        if (match) {
+            deleteUpstreamApiKey(match);
+            return Response.json({ ok: true }, { headers: corsHeaders });
+        }
+        return Response.json({ error: 'Key not found' }, { status: 404, headers: corsHeaders });
+    }
+
     // ── Dashboard API: model list (bypasses API key auth) ──────────────
     if (url.pathname === "/api/models" && req.method === "GET") {
         try {
             const modelsUrl = new URL('/v1/models', TARGET_URL);
-            const response = await fetch(modelsUrl.toString());
+            const response = await fetch(modelsUrl.toString(), {
+                headers: { 'Authorization': getUpstreamAuthHeader() },
+            });
             const data = await response.json();
             if (data.data && Array.isArray(data.data)) {
                 data.data = data.data.map((model: any) => ({
@@ -243,7 +273,7 @@ Bun.serve({
 
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
-        headers.delete("authorization"); // Don't leak proxy API keys upstream
+        headers.set("authorization", getUpstreamAuthHeader());
 
         const needsResponsesAPI = targetModel.match(/^gpt-5\.[2-9]|^gpt-5\.\d+-codex|^o[1-9]|^goldeneye/i);
         
@@ -344,7 +374,7 @@ Bun.serve({
       if (req.method === "GET" && url.pathname.includes("/models")) {
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
-        headers.delete("authorization"); // Don't leak proxy API keys upstream
+        headers.set("authorization", getUpstreamAuthHeader());
         const response = await fetch(targetUrl.toString(), { method: "GET", headers: headers });
         const data = await response.json();
         
@@ -363,7 +393,7 @@ Bun.serve({
 
       const headers = new Headers(req.headers);
       headers.set("host", targetUrl.host);
-      headers.delete("authorization"); // Don't leak proxy API keys upstream
+      headers.set("authorization", getUpstreamAuthHeader());
       const response = await fetch(targetUrl.toString(), {
         method: req.method,
         headers: headers,

@@ -374,10 +374,10 @@ tr:hover td { background: var(--bg-hover); }
                 </div>
             </div>
             <div class="card">
-                <div class="card-label">API Key</div>
+                <div class="card-label">API Key (copilot-api)</div>
                 <div class="copy-row">
-                    <div class="card-value mono">dummy</div>
-                    <button class="copy-btn" onclick="copyText('dummy',this)">Copy</button>
+                    <div class="card-value mono" id="upstream-key-display">Loading…</div>
+                    <button class="copy-btn" id="upstream-key-copy-btn" style="display:none" onclick="copyUpstreamKey(this)">Copy</button>
                 </div>
             </div>
             <div class="card" style="grid-column: 1 / -1">
@@ -388,10 +388,32 @@ tr:hover td { background: var(--bg-hover); }
             </div>
         </div>
 
+        <!-- Upstream (copilot-api) Keys -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; border: none; padding: 0;">Copilot API Keys</h3>
+                <button onclick="handleCreateUpstreamKey()" style="background: var(--accent); color: #000; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">+ New Key</button>
+            </div>
+            <p style="color: #888; font-size: 13px; margin-bottom: 12px;">
+                Keys stored in copilot-api's <code style="color:var(--accent)">config.json</code>. The first key is used by the proxy for upstream requests.
+                <br><span style="color:var(--yellow);">Note:</span> New keys require a copilot-api restart to take effect.
+            </p>
+
+            <div id="newUpstreamKeyAlert" style="display: none; background: #1a2e1a; border: 1px solid #22c55e; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="color: #22c55e; font-weight: 600; margin-bottom: 4px;">Copy this key now — it won't be shown in full again!</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <code id="newUpstreamKeyValue" style="flex: 1; background: #111; padding: 8px; border-radius: 4px; font-size: 13px; color: #22c55e; word-break: break-all;"></code>
+                    <button onclick="copyText(document.getElementById('newUpstreamKeyValue').textContent, this)" style="background: #333; border: none; color: #fff; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Copy</button>
+                </div>
+            </div>
+
+            <div id="upstreamKeysList"></div>
+        </div>
+
         <!-- API Key Management -->
         <div class="card" style="margin-bottom: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h3 style="margin: 0; border: none; padding: 0;">API Key Protection</h3>
+                <h3 style="margin: 0; border: none; padding: 0;">Proxy API Key Protection</h3>
                 <label class="toggle">
                     <input type="checkbox" id="requireKeyToggle" onchange="toggleRequireKey(this.checked)">
                     <span class="toggle-slider"></span>
@@ -616,6 +638,87 @@ async function fetchModels() {
     }
 }
 fetchModels();
+
+/* ── Tab 1: Upstream (copilot-api) Keys ───────────────────── */
+let fullUpstreamKey = '';
+
+async function loadUpstreamKeys() {
+    try {
+        const resp = await fetch('/api/upstream-keys');
+        const data = await resp.json();
+        const display = document.getElementById('upstream-key-display');
+        const copyBtn = document.getElementById('upstream-key-copy-btn');
+
+        if (data.keys && data.keys.length > 0) {
+            display.textContent = data.keys[0];
+            copyBtn.style.display = '';
+        } else {
+            display.textContent = 'No keys configured';
+            display.style.color = 'var(--yellow)';
+        }
+
+        renderUpstreamKeys(data.keys || []);
+    } catch (e) {
+        document.getElementById('upstream-key-display').textContent = 'Failed to load';
+    }
+}
+
+function renderUpstreamKeys(maskedKeys) {
+    const list = document.getElementById('upstreamKeysList');
+    if (maskedKeys.length === 0) {
+        list.innerHTML = '<div style="color: #666; font-size: 13px; padding: 12px 0;">No API keys configured. Create one to authenticate with copilot-api.</div>';
+        return;
+    }
+    list.innerHTML = '';
+    maskedKeys.forEach((k, i) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #222;';
+        const badge = i === 0
+            ? '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#1a2332;color:var(--accent);margin-left:8px;">Active</span>'
+            : '';
+        row.innerHTML =
+            '<div style="flex: 1; min-width: 0;">' +
+                '<code style="color: #aaa; font-size: 13px;">' + esc(k) + '</code>' + badge +
+            '</div>' +
+            '<button class="copy-btn" title="Copy masked key" onclick="copyText(\'' + esc(k) + '\', this)">Copy</button>' +
+            '<button style="background: none; border: none; color: #666; cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete" data-key="' + esc(k) + '">🗑</button>';
+        row.querySelector('button[title="Delete"]').addEventListener('click', function() { handleDeleteUpstreamKey(this.dataset.key); });
+        list.appendChild(row);
+    });
+}
+
+function copyUpstreamKey(btn) {
+    const display = document.getElementById('upstream-key-display').textContent;
+    copyText(display, btn);
+}
+
+async function handleCreateUpstreamKey() {
+    try {
+        const resp = await fetch('/api/upstream-keys', { method: 'POST' });
+        const data = await resp.json();
+        if (data.key) {
+            document.getElementById('newUpstreamKeyAlert').style.display = 'block';
+            document.getElementById('newUpstreamKeyValue').textContent = data.key;
+            loadUpstreamKeys();
+        }
+    } catch (e) {
+        alert('Failed to create key: ' + e.message);
+    }
+}
+
+async function handleDeleteUpstreamKey(maskedKey) {
+    if (!confirm('Delete this copilot-api key?')) return;
+    const prefix = maskedKey.split('...')[0];
+    try {
+        await fetch('/api/upstream-keys/' + encodeURIComponent(prefix), { method: 'DELETE' });
+        document.getElementById('newUpstreamKeyAlert').style.display = 'none';
+        loadUpstreamKeys();
+    } catch (e) {
+        alert('Failed to delete key: ' + e.message);
+    }
+}
+
+loadUpstreamKeys();
 
 /* ── Tab 1: API Key Management ─────────────────────────────── */
 let authConfig = { requireApiKey: false, keys: [] };

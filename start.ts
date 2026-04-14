@@ -6,6 +6,7 @@
 
 import { spawn, sleep } from 'bun';
 import { existsSync } from 'fs';
+import { getUpstreamAuthHeader } from './upstream-auth';
 
 const COPILOT_API_PORT = 4141;
 const PROXY_PORT = 4142;
@@ -30,7 +31,9 @@ async function waitForPort(port: number, timeoutMs = 30000): Promise<boolean> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
         try {
-            const resp = await fetch(`http://localhost:${port}/v1/models`);
+            const resp = await fetch(`http://localhost:${port}/v1/models`, {
+                headers: { 'Authorization': getUpstreamAuthHeader() },
+            });
             if (resp.ok) return true;
         } catch {}
         await sleep(500);
