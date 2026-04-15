@@ -5,6 +5,7 @@ import { logIncomingRequest, logTransformedRequest } from './debug-logger';
 import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type RequestLog } from './usage-db';
 import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from './auth-config';
 import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, deleteUpstreamApiKey } from './upstream-auth';
+import { compactIfNeeded, isMaxMode } from './max-mode';
 
 // ── Console capture for SSE streaming ─────────────────────────────────────────
 interface ConsoleLine {
@@ -270,6 +271,11 @@ Bun.serve({
         normalizeRequest(json, isClaude);
 
         logTransformedRequest(json);
+
+        // ── Max mode: compact long conversations before sending ───────────
+        if (isMaxMode()) {
+            json = await compactIfNeeded(json, targetModel, TARGET_URL);
+        }
 
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);

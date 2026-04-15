@@ -7,6 +7,13 @@
 import { spawn, sleep } from 'bun';
 import { existsSync } from 'fs';
 import { getUpstreamAuthHeader } from './upstream-auth';
+import { enableMaxMode, isMaxMode, fetchAndCacheModelLimits } from './max-mode';
+
+// ── Parse CLI flags ──────────────────────────────────────────────────────────
+const args = process.argv.slice(2);
+if (args.includes('--max')) {
+    enableMaxMode();
+}
 
 const COPILOT_API_PORT = 4141;
 const PROXY_PORT = 4142;
@@ -98,6 +105,12 @@ async function main() {
             process.exit(1);
         }
         console.log(`${GREEN}✅ copilot-api is ready on port ${COPILOT_API_PORT}${RESET}`);
+    }
+
+    // 1.5 If --max mode, pre-fetch and cache model token limits
+    if (isMaxMode()) {
+        console.log(`${CYAN}🔥 Max mode enabled — will auto-compact long conversations${RESET}`);
+        await fetchAndCacheModelLimits(`http://localhost:${COPILOT_API_PORT}`);
     }
 
     // 2. Check if proxy is already running
