@@ -21,13 +21,14 @@ const modelLimitsCache = new Map<string, ModelLimits>();
 
 // Fallback defaults — only used when upstream /v1/models doesn't return capabilities.limits.
 // Real limits are fetched dynamically from the copilot-api at startup via fetchAndCacheModelLimits().
+// Output token values: Claude 64K (Sonnet 3.5/4 extended), GPT-4/5 16K, o1/o3 100K reasoning.
 const DEFAULT_LIMITS: Record<string, ModelLimits> = {
     'claude': { maxInputTokens: 200000, maxOutputTokens: 64000 },
     'gpt-4': { maxInputTokens: 128000, maxOutputTokens: 16384 },
     'gpt-5': { maxInputTokens: 128000, maxOutputTokens: 16384 },
     'o1': { maxInputTokens: 200000, maxOutputTokens: 100000 },
     'o3': { maxInputTokens: 200000, maxOutputTokens: 100000 },
-    'default': { maxInputTokens: 128000, maxOutputTokens: 16384 },
+    'default': { maxInputTokens: 128000, maxOutputTokens: 16384 }, // conservative general-purpose fallback
 };
 
 function getDefaultLimits(model: string): ModelLimits {
