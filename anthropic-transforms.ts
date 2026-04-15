@@ -121,6 +121,16 @@ const transformMessages = (json: any, isClaude: boolean): void => {
                 }
             }
 
+            // Preserve any existing OpenAI-format tool_calls on the message
+            // (hybrid format: content is array but tool_calls are separate)
+            if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+                for (const tc of msg.tool_calls) {
+                    if (!toolCalls.some(t => t.id === tc.id)) {
+                        toolCalls.push(tc);
+                    }
+                }
+            }
+
             const assistantMsg: any = { role: 'assistant' };
             assistantMsg.content = textParts.join('\n') || null;
             if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
