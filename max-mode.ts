@@ -19,13 +19,15 @@ interface ModelLimits {
 
 const modelLimitsCache = new Map<string, ModelLimits>();
 
+// Fallback defaults — only used when upstream /v1/models doesn't return capabilities.limits.
+// Real limits are fetched dynamically from the copilot-api at startup via fetchAndCacheModelLimits().
 const DEFAULT_LIMITS: Record<string, ModelLimits> = {
-    'claude': { maxInputTokens: 200000, maxOutputTokens: 8192 },
+    'claude': { maxInputTokens: 200000, maxOutputTokens: 64000 },
     'gpt-4': { maxInputTokens: 128000, maxOutputTokens: 16384 },
     'gpt-5': { maxInputTokens: 128000, maxOutputTokens: 16384 },
     'o1': { maxInputTokens: 200000, maxOutputTokens: 100000 },
     'o3': { maxInputTokens: 200000, maxOutputTokens: 100000 },
-    'default': { maxInputTokens: 128000, maxOutputTokens: 8192 },
+    'default': { maxInputTokens: 128000, maxOutputTokens: 16384 },
 };
 
 function getDefaultLimits(model: string): ModelLimits {
@@ -56,6 +58,9 @@ export async function fetchAndCacheModelLimits(targetUrl: string): Promise<void>
             }
         }
         console.log(`📋 Max mode: cached token limits for ${modelLimitsCache.size} models`);
+        for (const [id, lim] of modelLimitsCache) {
+            console.log(`   ${id}: input=${lim.maxInputTokens}, output=${lim.maxOutputTokens}`);
+        }
     } catch (e: any) {
         console.warn(`⚠️ Max mode: failed to fetch model limits: ${e?.message || e}`);
     }
