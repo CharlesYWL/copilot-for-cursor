@@ -128,6 +128,10 @@ const COMPACT_THRESHOLD = 0.80;
 const KEEP_RECENT_MESSAGES = 10;
 // Never compact if total messages are below this count
 const MIN_MESSAGES_FOR_COMPACTION = 15;
+// Max characters per individual message when building the summarization input
+const MAX_MESSAGE_CHARS_FOR_SUMMARY = 8000;
+// Acknowledgment message inserted after the summary to maintain conversation flow
+const SUMMARY_ACKNOWLEDGMENT = 'Understood. I have the full context from the conversation summary. Let me continue.';
 
 export async function compactIfNeeded(
     json: any,
@@ -168,7 +172,7 @@ export async function compactIfNeeded(
         json.messages = [
             ...systemMsgs,
             { role: 'user', content: `[Conversation Summary]\n${summary}` },
-            { role: 'assistant', content: 'Understood. I have the full context from the conversation summary. Let me continue.' },
+            { role: 'assistant', content: SUMMARY_ACKNOWLEDGMENT },
             ...recentMsgs,
         ];
 
@@ -193,8 +197,7 @@ async function callSummarize(model: string, messages: any[], targetUrl: string):
                             ? m.content.map((p: any) => p.text || JSON.stringify(p)).join('\n')
                             : JSON.stringify(m.content);
                     const role = m.role || 'unknown';
-                    // Truncate extremely long individual messages to avoid blowing up the summarization call
-                    const truncated = content.length > 8000 ? content.slice(0, 8000) + '\n... [truncated]' : content;
+                    const truncated = content.length > MAX_MESSAGE_CHARS_FOR_SUMMARY ? content.slice(0, MAX_MESSAGE_CHARS_FOR_SUMMARY) + '\n... [truncated]' : content;
                     return `[${role}]: ${truncated}`;
                 }).join('\n\n'),
         },
