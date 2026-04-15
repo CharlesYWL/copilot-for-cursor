@@ -28,6 +28,14 @@ cd copilot-for-cursor
 bun run start.ts
 ```
 
+### Enable Max Mode (auto-compact long conversations)
+
+```bash
+bun run start.ts --max
+```
+
+> **Max mode** automatically compacts conversation history when the estimated token count exceeds 80% of the model's input token limit. It summarizes older messages into a structured summary while keeping the most recent messages intact — letting you have much longer coding sessions without hitting token limits.
+
 ### Then start an HTTPS tunnel
 
 Cursor requires HTTPS. In a second terminal:
@@ -66,6 +74,10 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 | `stream-proxy.ts` | Streaming passthrough with chunk logging and error detection |
 | `debug-logger.ts` | Request/response debug logging helpers |
 | `start.ts` | One-command launcher for copilot-api + proxy-router |
+| `max-mode.ts` | Auto-compaction for long conversations (`--max` flag) |
+| `usage-db.ts` | Persistent request/token usage tracking |
+| `auth-config.ts` | API key generation, validation, and config persistence |
+| `upstream-auth.ts` | Upstream copilot-api authentication and key management |
 
 ---
 
@@ -139,6 +151,7 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 *   **💻 Terminal:** `Shell` (run commands)
 *   **🔍 Search:** `Grep`, `Glob`, `SemanticSearch`
 *   **🔌 MCP Tools:** External tools (Neon, Playwright, etc.)
+*   **🗜️ Max Mode:** Auto-compact long conversations to stay within token limits (`--max`)
 
 ---
 
@@ -187,6 +200,7 @@ Three tabs:
 | Plan mode | ✅ Works |
 | Agent mode | ✅ Works |
 | All GPT-5.x models | ✅ Works |
+| Max mode (long session compaction) | ✅ Works (`--max` flag) |
 | Extended thinking (chain-of-thought) | ❌ Stripped |
 | Prompt caching (`cache_control`) | ❌ Stripped |
 | Claude Vision | ❌ Not supported via Copilot |
@@ -207,6 +221,9 @@ The proxy auto-routes these. Make sure you're running the latest version.
 
 **"connection refused":**
 Ensure services are running: `bun run start.ts` or check `http://localhost:4142`.
+
+**Max mode not compacting:**
+Compaction only triggers when estimated tokens exceed 80% of the model's limit and there are at least 15 messages. Check the console log for `🗜️ Max mode` messages.
 
 ---
 

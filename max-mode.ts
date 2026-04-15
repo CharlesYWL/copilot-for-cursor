@@ -107,6 +107,12 @@ function estimateMessagesTokens(messages: any[]): number {
     return total;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function truncateContent(content: string, maxChars: number): string {
+    if (content.length <= maxChars) return content;
+    return content.slice(0, maxChars) + '\n... [truncated]';
+}
+
 // ── Summarization prompt ──────────────────────────────────────────────────────
 // Inspired by claude-code/opencode compaction prompts, adapted for proxy use.
 const SUMMARIZATION_PROMPT = `Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and the assistant's previous actions.
@@ -134,6 +140,8 @@ const COMPACT_THRESHOLD = 0.80;
 const KEEP_RECENT_MESSAGES = 10;
 // Never compact if total messages are below this count
 const MIN_MESSAGES_FOR_COMPACTION = 15;
+// Minimum old messages worth summarizing (below this, compaction is skipped)
+const MIN_MESSAGES_TO_SUMMARIZE = 3;
 // Max characters per individual message when building the summarization input
 const MAX_MESSAGE_CHARS_FOR_SUMMARY = 8000;
 // Acknowledgment message inserted after the summary to maintain conversation flow
@@ -162,11 +170,12 @@ export async function compactIfNeeded(
     // Split: system messages + old messages to summarize + recent messages to keep
     const systemMsgs = json.messages.filter((m: any) => m.role === 'system');
     const nonSystemMsgs = json.messages.filter((m: any) => m.role !== 'system');
+    // Keep at most half of non-system messages to ensure there's enough old content to summarize
     const keepCount = Math.min(KEEP_RECENT_MESSAGES, Math.floor(nonSystemMsgs.length / 2));
     const recentMsgs = nonSystemMsgs.slice(-keepCount);
     const oldMsgs = nonSystemMsgs.slice(0, -keepCount);
 
-    if (oldMsgs.length < 3) return json; // nothing meaningful to compact
+    if (oldMsgs.length < MIN_MESSAGES_TO_SUMMARIZE) return json; // nothing meaningful to compact
 
     try {
         const summary = await callSummarize(targetModel, oldMsgs, targetUrl);
@@ -203,7 +212,7 @@ async function callSummarize(model: string, messages: any[], targetUrl: string):
                             ? m.content.map((p: any) => p.text || JSON.stringify(p)).join('\n')
                             : JSON.stringify(m.content);
                     const role = m.role || 'unknown';
-                    const truncated = content.length > MAX_MESSAGE_CHARS_FOR_SUMMARY ? content.slice(0, MAX_MESSAGE_CHARS_FOR_SUMMARY) + '\n... [truncated]' : content;
+                    const truncated = truncateContent(content, MAX_MESSAGE_CHARS_FOR_SUMMARY);
                     return `[${role}]: ${truncated}`;
                 }).join('\n\n'),
         },
