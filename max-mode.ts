@@ -1,4 +1,5 @@
 import { getUpstreamAuthHeader } from './upstream-auth';
+import { needsResponsesAPI } from './model-routing';
 
 // ── Global config ─────────────────────────────────────────────────────────────
 let maxModeEnabled = false;
@@ -113,6 +114,19 @@ function truncateContent(content: string, maxChars: number): string {
     return content.slice(0, maxChars) + '\n... [truncated]';
 }
 
+function extractResponsesTextContent(data: any): string {
+    const outputMessages = (data.output || []).filter((item: any) =>
+        item.type === 'message' && Array.isArray(item.content)
+    );
+    const textParts = outputMessages
+        .flatMap((item: any) => item.content)
+        .filter((part: any) => part.type === 'output_text');
+    if (textParts.length === 0) {
+        console.warn('⚠️ Max mode: Responses summarization returned no output_text parts');
+    }
+    return textParts.map((part: any) => part.text).join('');
+}
+
 // ── Summarization prompt ──────────────────────────────────────────────────────
 // Inspired by claude-code/opencode compaction prompts, adapted for proxy use.
 const SUMMARIZATION_PROMPT = `Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and the assistant's previous actions.
@@ -199,26 +213,64 @@ export async function compactIfNeeded(
 }
 
 async function callSummarize(model: string, messages: any[], targetUrl: string): Promise<string | null> {
-    // Build a summarization request to the same upstream using the same model
+    const conversationText = messages.map(m => {
+        const content = typeof m.content === 'string'
+            ? m.content
+            : Array.isArray(m.content)
+                ? m.content.map((p: any) => p.text || JSON.stringify(p)).join('\n')
+                : JSON.stringify(m.content);
+        const role = m.role || 'unknown';
+        const truncated = truncateContent(content, MAX_MESSAGE_CHARS_FOR_SUMMARY);
+        return `[${role}]: ${truncated}`;
+    }).join('\n\n');
+
+    console.log(`🗜️ Max mode: sending summarization request (${messages.length} messages → ${model})`);
+
+    if (needsResponsesAPI(model)) {
+        const responsesUrl = new URL('/v1/responses', targetUrl);
+        const responsesBody = JSON.stringify({
+            model,
+            instructions: SUMMARIZATION_PROMPT,
+            input: `Please summarize the following conversation:\n\n${conversationText}`,
+            max_output_tokens: 4096,
+            temperature: 0.2,
+            stream: false,
+        });
+
+        const resp = await fetch(responsesUrl.toString(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': getUpstreamAuthHeader(),
+            },
+            body: responsesBody,
+        });
+
+        if (!resp.ok) {
+            const errText = await resp.text();
+            console.error(`❌ Max mode summarization failed (${resp.status}):`, errText.slice(0, 500));
+            return null;
+        }
+
+        const data = await resp.json() as any;
+        const content = extractResponsesTextContent(data);
+
+        if (content) {
+            console.log(`🗜️ Max mode: summarization complete (${estimateTokens(content)} est. tokens)`);
+        }
+
+        return content || null;
+    }
+
     const summarizeMessages = [
         { role: 'system', content: SUMMARIZATION_PROMPT },
         {
             role: 'user',
-            content: 'Please summarize the following conversation:\n\n' +
-                messages.map(m => {
-                    const content = typeof m.content === 'string'
-                        ? m.content
-                        : Array.isArray(m.content)
-                            ? m.content.map((p: any) => p.text || JSON.stringify(p)).join('\n')
-                            : JSON.stringify(m.content);
-                    const role = m.role || 'unknown';
-                    const truncated = truncateContent(content, MAX_MESSAGE_CHARS_FOR_SUMMARY);
-                    return `[${role}]: ${truncated}`;
-                }).join('\n\n'),
+            content: `Please summarize the following conversation:\n\n${conversationText}`,
         },
     ];
 
-    const body = JSON.stringify({
+    const chatBody = JSON.stringify({
         model,
         messages: summarizeMessages,
         max_tokens: 4096,
@@ -227,15 +279,13 @@ async function callSummarize(model: string, messages: any[], targetUrl: string):
     });
 
     const chatUrl = new URL('/v1/chat/completions', targetUrl);
-    console.log(`🗜️ Max mode: sending summarization request (${messages.length} messages → ${model})`);
-
     const resp = await fetch(chatUrl.toString(), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': getUpstreamAuthHeader(),
         },
-        body,
+        body: chatBody,
     });
 
     if (!resp.ok) {
