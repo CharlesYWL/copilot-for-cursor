@@ -12,7 +12,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build start.ts proxy-router.ts anthropic-transforms.ts responses-bridge.ts responses-converters.ts stream-proxy.ts debug-logger.ts auth-config.ts upstream-auth.ts --outdir dist --target node",
+    "build": "bun build start.ts --outdir dist --target node",
     "dev": "bun run start.ts",
     "start": "bun dist/start.js"
   },

@@ -5,6 +5,8 @@ import { logIncomingRequest, logTransformedRequest } from './debug-logger';
 import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type RequestLog } from './usage-db';
 import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from './auth-config';
 import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, deleteUpstreamApiKey } from './upstream-auth';
+import { compactIfNeeded, isMaxMode } from './max-mode';
+import { needsResponsesAPI } from './model-routing';
 
 // ── Console capture for SSE streaming ─────────────────────────────────────────
 interface ConsoleLine {
@@ -271,19 +273,24 @@ Bun.serve({
 
         logTransformedRequest(json);
 
+        // ── Max mode: compact long conversations before sending ───────────
+        if (isMaxMode()) {
+            json = await compactIfNeeded(json, targetModel, TARGET_URL);
+        }
+
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
         headers.set("authorization", getUpstreamAuthHeader());
 
-        const needsResponsesAPI = targetModel.match(/^gpt-5\.[2-9]|^gpt-5\.\d+-codex|^o[1-9]|^goldeneye/i);
+        const shouldUseResponsesAPI = needsResponsesAPI(targetModel);
         
-        if (needsResponsesAPI && json.max_tokens) {
+        if (shouldUseResponsesAPI && json.max_tokens) {
             json.max_completion_tokens = json.max_tokens;
             delete json.max_tokens;
             console.log(`🔧 Converted max_tokens → max_completion_tokens`);
         }
 
-        if (needsResponsesAPI) {
+        if (shouldUseResponsesAPI) {
             console.log(`🔀 Model ${targetModel} — using Responses API bridge`);
             const chatId = `chatcmpl-proxy-${++responseCounter}`;
             try {
