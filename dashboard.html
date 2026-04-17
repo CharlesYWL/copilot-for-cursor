@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Copilot Cursor Proxy — Dashboard</title>
+<title>Copilot for Cursor — Dashboard</title>
 <style>
 :root {
     --bg: #0a0a0a;
@@ -357,6 +357,7 @@ tr:hover td { background: var(--bg-hover); }
 <div class="tabs" role="tablist">
     <div class="tab active" data-tab="endpoint" role="tab" tabindex="0" aria-selected="true">Endpoint</div>
     <div class="tab" data-tab="usage" role="tab" tabindex="0" aria-selected="false">Usage</div>
+    <div class="tab" data-tab="tunnel" role="tab" tabindex="0" aria-selected="false">Tunnel</div>
     <div class="tab" data-tab="console" role="tab" tabindex="0" aria-selected="false">Console Log</div>
 </div>
 
@@ -381,9 +382,10 @@ tr:hover td { background: var(--bg-hover); }
                 </div>
             </div>
             <div class="card" style="grid-column: 1 / -1">
-                <div class="card-label">Tunnel</div>
-                <div class="card-value" style="font-size:13px; color:var(--text-dim);">
-                    Configure your HTTPS tunnel separately (e.g. ngrok, cloudflared)
+                <div class="card-label">Public Tunnel</div>
+                <div class="copy-row">
+                    <div class="card-value mono" id="endpoint-tunnel-url" style="font-size:13px; color:var(--text-dim);">Not running</div>
+                    <button class="copy-btn" onclick="switchTabById('tunnel')">Open Tunnel Tab</button>
                 </div>
             </div>
         </div>
@@ -544,6 +546,76 @@ tr:hover td { background: var(--bg-hover); }
         </div>
     </div>
 
+    <!-- ═══════════ TAB: Tunnel ═══════════ -->
+    <div id="tab-tunnel" class="tab-panel">
+        <div class="card" style="margin-bottom: 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:260px;">
+                    <h3 style="margin:0 0 4px; border:none; padding:0; font-size:15px;">Public Tunnel</h3>
+                    <p style="color:var(--text-dim); font-size:13px; margin:0;">
+                        Expose your local proxy to the internet in one click. Use the public URL from another machine, a teammate's Cursor, or your phone.
+                    </p>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="dot" id="tunnel-status-dot" style="width:10px;height:10px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span>
+                    <span id="tunnel-status-label" class="mono" style="font-size:12px; color:var(--text-dim);">idle</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label for="tunnel-provider" class="card-label" style="display:block; margin-bottom:6px;">Provider</label>
+                    <select id="tunnel-provider" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px;">
+                        <option value="cloudflared">Cloudflare Quick Tunnel (no account)</option>
+                        <option value="ngrok">ngrok (needs authtoken)</option>
+                        <option value="bore">bore.pub (no account)</option>
+                    </select>
+                </div>
+                <div id="tunnel-authtoken-wrap" style="display:none;">
+                    <label for="tunnel-authtoken" class="card-label" style="display:block; margin-bottom:6px;">ngrok Authtoken (optional)</label>
+                    <input id="tunnel-authtoken" type="password" placeholder="Leave blank if already set via NGROK_AUTHTOKEN" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace;">
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button id="tunnel-start-btn" onclick="handleTunnelStart()" style="flex:1; background:var(--green); color:#000; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:600;">Start Tunnel</button>
+                <button id="tunnel-stop-btn" onclick="handleTunnelStop()" style="flex:1; background:var(--red); color:#fff; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight:600; display:none;">Stop Tunnel</button>
+            </div>
+        </div>
+
+        <div id="tunnel-result" class="card" style="display:none; margin-bottom:16px;">
+            <div class="card-label" style="margin-bottom:8px;">Public URL</div>
+            <div class="copy-row" style="margin-bottom:12px;">
+                <div class="card-value mono" id="tunnel-url" style="font-size:14px; word-break:break-all;"></div>
+                <button class="copy-btn" onclick="copyText(document.getElementById('tunnel-url').textContent, this)">Copy</button>
+            </div>
+            <div class="card-label" style="margin-bottom:8px;">Cursor Endpoint</div>
+            <div class="copy-row" style="margin-bottom:16px;">
+                <div class="card-value mono" id="tunnel-cursor-url" style="font-size:14px; word-break:break-all;"></div>
+                <button class="copy-btn" onclick="copyText(document.getElementById('tunnel-cursor-url').textContent, this)">Copy</button>
+            </div>
+            <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                <div id="tunnel-qr" style="background:#fff; padding:8px; border-radius:6px; line-height:0;"></div>
+                <div style="flex:1; min-width:200px; color:var(--text-dim); font-size:13px;">
+                    Scan the QR code to open this URL on another device. Paste the Cursor endpoint into Cursor settings to route requests through the tunnel.
+                </div>
+            </div>
+        </div>
+
+        <div id="tunnel-error" class="card" style="display:none; margin-bottom:16px; border-color: var(--red);">
+            <div class="card-label" style="color:var(--red); margin-bottom:4px;">Tunnel error</div>
+            <div id="tunnel-error-msg" class="mono" style="font-size:13px; color:var(--text); white-space:pre-wrap;"></div>
+        </div>
+
+        <div class="card" style="border-color:#1a3050; background:#0e1a2b;">
+            <div class="card-label" style="color:var(--accent); margin-bottom:4px;">Security note</div>
+            <div style="font-size:13px; color:var(--text);">
+                The tunnel exposes your proxy publicly. Anyone with the URL can use your GitHub Copilot quota unless you enable API key auth on the <a href="#" onclick="switchTabById('endpoint'); return false;" style="color:var(--accent);">Endpoint tab</a>.
+            </div>
+        </div>
+    </div>
+
     <!-- ═══════════ TAB 3: Console ═══════════ -->
     <div id="tab-console" class="tab-panel">
         <div class="console-wrap">
@@ -566,6 +638,11 @@ function switchTab(t) {
     t.setAttribute('aria-selected', 'true');
     document.getElementById('tab-' + t.dataset.tab).classList.add('active');
     if (t.dataset.tab === 'usage') fetchUsage();
+    if (t.dataset.tab === 'tunnel') initTunnelTab();
+}
+function switchTabById(id) {
+    const t = document.querySelector(`.tab[data-tab="${id}"]`);
+    if (t) switchTab(t);
 }
 tabs.forEach(t => {
     t.addEventListener('click', () => switchTab(t));
@@ -957,6 +1034,138 @@ connectSSE();
 function clearLogs() {
     fetch('/api/logs/clear', { method: 'POST' });
 }
+
+/* ── Tunnel ──────────────────────────────────────────────────── */
+let tunnelEventSource = null;
+let tunnelTabInitialized = false;
+
+function initTunnelTab() {
+    if (tunnelTabInitialized) return;
+    tunnelTabInitialized = true;
+
+    const providerSelect = document.getElementById('tunnel-provider');
+    const authtokenWrap = document.getElementById('tunnel-authtoken-wrap');
+    const updateAuthVisibility = () => {
+        authtokenWrap.style.display = providerSelect.value === 'ngrok' ? 'block' : 'none';
+    };
+    providerSelect.addEventListener('change', updateAuthVisibility);
+    updateAuthVisibility();
+
+    fetch('/api/tunnel').then(r => r.json()).then(applyTunnelState).catch(() => {});
+
+    if (!tunnelEventSource) {
+        tunnelEventSource = new EventSource('/api/tunnel/stream');
+        tunnelEventSource.onmessage = (e) => {
+            try { applyTunnelState(JSON.parse(e.data)); } catch {}
+        };
+        tunnelEventSource.onerror = () => {};
+    }
+}
+
+function applyTunnelState(s) {
+    const dot = document.getElementById('tunnel-status-dot');
+    const label = document.getElementById('tunnel-status-label');
+    const startBtn = document.getElementById('tunnel-start-btn');
+    const stopBtn = document.getElementById('tunnel-stop-btn');
+    const result = document.getElementById('tunnel-result');
+    const urlEl = document.getElementById('tunnel-url');
+    const cursorUrlEl = document.getElementById('tunnel-cursor-url');
+    const errorBox = document.getElementById('tunnel-error');
+    const errorMsg = document.getElementById('tunnel-error-msg');
+    const endpointTunnelUrl = document.getElementById('endpoint-tunnel-url');
+
+    const statusColors = {
+        idle:     'var(--text-muted)',
+        starting: 'var(--yellow)',
+        running:  'var(--green)',
+        error:    'var(--red)',
+        stopped:  'var(--text-muted)',
+    };
+    if (dot) dot.style.background = statusColors[s.status] || 'var(--text-muted)';
+    if (label) label.textContent = s.status + (s.provider ? ' · ' + s.provider : '');
+
+    const isActive = s.status === 'starting' || s.status === 'running';
+    if (startBtn) startBtn.style.display = isActive ? 'none' : 'block';
+    if (stopBtn) stopBtn.style.display = isActive ? 'block' : 'none';
+    if (startBtn) startBtn.textContent = s.status === 'starting' ? 'Starting…' : 'Start Tunnel';
+
+    if (s.url && s.status === 'running') {
+        result.style.display = 'block';
+        urlEl.textContent = s.url;
+        cursorUrlEl.textContent = s.url.replace(/\/$/, '') + '/v1';
+        renderQRCode(s.url);
+        if (endpointTunnelUrl) endpointTunnelUrl.textContent = s.url;
+    } else {
+        result.style.display = 'none';
+        if (endpointTunnelUrl) endpointTunnelUrl.textContent = 'Not running';
+    }
+
+    if (s.error) {
+        errorBox.style.display = 'block';
+        errorMsg.textContent = s.error;
+    } else {
+        errorBox.style.display = 'none';
+    }
+}
+
+function renderQRCode(text) {
+    const container = document.getElementById('tunnel-qr');
+    if (!container) return;
+    container.innerHTML = '';
+    const render = () => {
+        try {
+            const qr = window.qrcode(0, 'L');
+            qr.addData(text);
+            qr.make();
+            container.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0 });
+            const svg = container.querySelector('svg');
+            if (svg) {
+                svg.style.width = '128px';
+                svg.style.height = '128px';
+            }
+        } catch (e) {
+            container.textContent = '';
+        }
+    };
+    if (window.qrcode) {
+        render();
+    } else {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+        script.onload = render;
+        script.onerror = () => { container.style.display = 'none'; };
+        document.head.appendChild(script);
+    }
+}
+
+async function handleTunnelStart() {
+    const provider = document.getElementById('tunnel-provider').value;
+    const authtoken = document.getElementById('tunnel-authtoken').value.trim() || undefined;
+    const startBtn = document.getElementById('tunnel-start-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Starting…';
+    try {
+        await fetch('/api/tunnel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider, authtoken }),
+        });
+    } finally {
+        startBtn.disabled = false;
+    }
+}
+
+async function handleTunnelStop() {
+    const stopBtn = document.getElementById('tunnel-stop-btn');
+    stopBtn.disabled = true;
+    try {
+        await fetch('/api/tunnel', { method: 'DELETE' });
+    } finally {
+        stopBtn.disabled = false;
+    }
+}
+
+fetch('/api/tunnel').then(r => r.json()).then(applyTunnelState).catch(() => {});
 </script>
 </body>
 </html>

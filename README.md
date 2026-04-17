@@ -38,7 +38,13 @@ bun run start.ts --max
 
 ### Then start an HTTPS tunnel
 
-Cursor requires HTTPS. In a second terminal:
+Cursor requires HTTPS. You have two options:
+
+**Option A — One-click tunnel (recommended)**
+
+Open the dashboard at `http://localhost:4142/`, go to the **Tunnel** tab, pick a provider (Cloudflare, ngrok, or bore) and click **Start Tunnel**. The public URL, QR code, and Cursor endpoint will appear instantly. Cloudflare is pre-installed automatically — no signup, no config.
+
+**Option B — Run a tunnel manually**
 
 ```bash
 # Cloudflare (free, no signup)

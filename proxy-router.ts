@@ -7,6 +7,7 @@ import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from '
 import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, deleteUpstreamApiKey } from './upstream-auth';
 import { compactIfNeeded, isMaxMode } from './max-mode';
 import { needsResponsesAPI } from './model-routing';
+import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
 
 // ── Console capture for SSE streaming ─────────────────────────────────────────
 interface ConsoleLine {
@@ -197,6 +198,53 @@ Bun.serve({
             return Response.json({ ok: true }, { headers: corsHeaders });
         }
         return Response.json({ error: 'Key not found' }, { status: 404, headers: corsHeaders });
+    }
+
+    // ── Dashboard API: tunnel management ──────────────────────────────
+    if (url.pathname === "/api/tunnel" && req.method === "GET") {
+        return Response.json(getTunnelState(), { headers: corsHeaders });
+    }
+    if (url.pathname === "/api/tunnel" && req.method === "POST") {
+        try {
+            const body = await req.json() as { provider?: TunnelProvider; authtoken?: string };
+            if (!body.provider || !['cloudflared', 'ngrok', 'bore'].includes(body.provider)) {
+                return Response.json({ error: 'Invalid provider' }, { status: 400, headers: corsHeaders });
+            }
+            startTunnel(body.provider, { authtoken: body.authtoken }).catch(() => {});
+            return Response.json(getTunnelState(), { headers: corsHeaders });
+        } catch (e: any) {
+            return Response.json({ error: e?.message || 'Failed to start tunnel' }, { status: 500, headers: corsHeaders });
+        }
+    }
+    if (url.pathname === "/api/tunnel" && req.method === "DELETE") {
+        await stopTunnel();
+        return Response.json(getTunnelState(), { headers: corsHeaders });
+    }
+    if (url.pathname === "/api/tunnel/stream") {
+        const stream = new ReadableStream({
+            start(controller) {
+                const encoder = new TextEncoder();
+                const send = (s: ReturnType<typeof getTunnelState>) => {
+                    try {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(s)}\n\n`));
+                    } catch {}
+                };
+                const unsub = subscribeTunnel(send);
+                (controller as any)._tunnelUnsub = unsub;
+            },
+            cancel(controller) {
+                const unsub = (controller as any)?._tunnelUnsub;
+                if (typeof unsub === 'function') unsub();
+            },
+        });
+        return new Response(stream, {
+            headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+            },
+        });
     }
 
     // ── Dashboard API: model list (bypasses API key auth) ──────────────

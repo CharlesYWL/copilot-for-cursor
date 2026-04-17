@@ -8,6 +8,7 @@ import { spawn, sleep } from 'bun';
 import { existsSync } from 'fs';
 import { getUpstreamAuthHeader } from './upstream-auth';
 import { enableMaxMode, isMaxMode, fetchAndCacheModelLimits } from './max-mode';
+import { stopTunnel } from './tunnel';
 
 // ── Parse CLI flags ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -134,12 +135,14 @@ async function main() {
     console.log(`${CYAN}   Cursor config: http://localhost:${PROXY_PORT}/v1${RESET}`);
 
     // Handle graceful shutdown
-    process.on('SIGINT', () => {
+    process.on('SIGINT', async () => {
         console.log(`\n${YELLOW}🛑 Shutting down...${RESET}`);
+        try { await stopTunnel(); } catch {}
         if (copilotProc) copilotProc.kill();
         process.exit(0);
     });
-    process.on('SIGTERM', () => {
+    process.on('SIGTERM', async () => {
+        try { await stopTunnel(); } catch {}
         if (copilotProc) copilotProc.kill();
         process.exit(0);
     });
