@@ -13,7 +13,7 @@ Use **all** Copilot models (GPT-5.4, Claude Opus 4.6, Gemini 3.1, etc.) in Curso
 ### One Command (npm)
 
 ```bash
-npx copilot-cursor-proxy
+npx copilot-for-cursor
 ```
 
 > Requires [Bun](https://bun.sh/) installed. First run will prompt GitHub authentication.
