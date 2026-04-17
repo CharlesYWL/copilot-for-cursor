@@ -148,8 +148,11 @@ Your summary MUST:
 Format as a structured summary, not a conversation replay. Be concise but do NOT omit any technical details that would be needed to continue the work.`;
 
 // ── Compaction logic ──────────────────────────────────────────────────────────
-// Threshold: compact when estimated input tokens exceed this fraction of model max
-const COMPACT_THRESHOLD = 0.80;
+// Soft threshold (--max mode): proactively compact at 80% so long sessions stay smooth.
+const COMPACT_THRESHOLD_SOFT = 0.80;
+// Hard threshold (always on): safety net — compact only when we're about to overflow.
+// Keeps non-max users from ever hitting upstream context-length errors.
+const COMPACT_THRESHOLD_HARD = 0.95;
 // Keep the most recent N messages untouched to preserve immediate context
 const KEEP_RECENT_MESSAGES = 10;
 // Never compact if total messages are below this count
@@ -166,20 +169,22 @@ export async function compactIfNeeded(
     targetModel: string,
     targetUrl: string,
 ): Promise<any> {
-    if (!maxModeEnabled) return json;
     if (!json.messages || !Array.isArray(json.messages) || json.messages.length < MIN_MESSAGES_FOR_COMPACTION) {
         return json;
     }
 
     const limits = getModelLimits(targetModel);
     const estimated = estimateMessagesTokens(json.messages);
-    const threshold = Math.floor(limits.maxInputTokens * COMPACT_THRESHOLD);
+    // --max → aggressive (soft) compaction at 80%; otherwise act only as a safety net at 95%.
+    const thresholdFraction = maxModeEnabled ? COMPACT_THRESHOLD_SOFT : COMPACT_THRESHOLD_HARD;
+    const threshold = Math.floor(limits.maxInputTokens * thresholdFraction);
 
     if (estimated <= threshold) {
         return json;
     }
 
-    console.log(`🗜️ Max mode: estimated ${estimated} tokens exceeds ${COMPACT_THRESHOLD * 100}% of ${limits.maxInputTokens} — compacting`);
+    const mode = maxModeEnabled ? 'soft' : 'hard';
+    console.log(`🗜️ ${mode === 'soft' ? 'Max mode' : 'Safety net'}: estimated ${estimated} tokens exceeds ${thresholdFraction * 100}% of ${limits.maxInputTokens} — compacting`);
 
     // Split: system messages + old messages to summarize + recent messages to keep
     const systemMsgs = json.messages.filter((m: any) => m.role === 'system');
@@ -189,13 +194,20 @@ export async function compactIfNeeded(
     const recentMsgs = nonSystemMsgs.slice(-keepCount);
     const oldMsgs = nonSystemMsgs.slice(0, -keepCount);
 
-    if (oldMsgs.length < MIN_MESSAGES_TO_SUMMARIZE) return json; // nothing meaningful to compact
+    if (oldMsgs.length < MIN_MESSAGES_TO_SUMMARIZE) {
+        // Not enough old content to summarize meaningfully — but if we're over the hard
+        // ceiling we still need to do *something*, so drop oldest non-system messages.
+        return hardTruncateIfOver(json, systemMsgs, nonSystemMsgs, limits.maxInputTokens);
+    }
 
     try {
         const summary = await callSummarize(targetModel, oldMsgs, targetUrl);
-        if (!summary) return json; // summarization failed, pass through
+        if (!summary) {
+            // Summarization failed — fall back to hard truncation so we don't 500.
+            return hardTruncateIfOver(json, systemMsgs, nonSystemMsgs, limits.maxInputTokens);
+        }
 
-        console.log(`🗜️ Max mode: compacted ${oldMsgs.length} messages → 1 summary (${estimateTokens(summary)} est. tokens)`);
+        console.log(`🗜️ Compacted ${oldMsgs.length} messages → 1 summary (${estimateTokens(summary)} est. tokens)`);
 
         // Rebuild messages: system + summary-as-user-message + recent
         json.messages = [
@@ -205,11 +217,49 @@ export async function compactIfNeeded(
             ...recentMsgs,
         ];
 
+        // Even after summarization the prompt may still be over budget (e.g. huge recent
+        // messages). Apply hard truncation as the final safety net.
+        const postEst = estimateMessagesTokens(json.messages);
+        const hardCeiling = Math.floor(limits.maxInputTokens * COMPACT_THRESHOLD_HARD);
+        if (postEst > hardCeiling) {
+            json.messages = hardTruncateMessages(json.messages, hardCeiling);
+        }
+
         return json;
     } catch (e: any) {
-        console.error(`❌ Max mode: compaction failed, passing through original:`, e?.message || e);
-        return json;
+        console.error(`❌ Compaction failed, falling back to hard truncation:`, e?.message || e);
+        return hardTruncateIfOver(json, systemMsgs, nonSystemMsgs, limits.maxInputTokens);
     }
+}
+
+// ── Hard truncation (last-resort safety net) ──────────────────────────────────
+// Drops oldest non-system messages until estimated tokens are under the hard ceiling.
+// Zero LLM calls — used when summarization fails or there's nothing worth summarizing.
+function hardTruncateMessages(messages: any[], targetTokens: number): any[] {
+    const system = messages.filter((m: any) => m.role === 'system');
+    let rest = messages.filter((m: any) => m.role !== 'system');
+    let dropped = 0;
+    while (rest.length > 2 && estimateMessagesTokens([...system, ...rest]) > targetTokens) {
+        rest.shift();
+        dropped++;
+    }
+    if (dropped > 0) {
+        console.log(`🗜️ Hard truncation: dropped ${dropped} oldest message(s) to fit token budget`);
+    }
+    return [...system, ...rest];
+}
+
+function hardTruncateIfOver(
+    json: any,
+    systemMsgs: any[],
+    nonSystemMsgs: any[],
+    maxInputTokens: number,
+): any {
+    const ceiling = Math.floor(maxInputTokens * COMPACT_THRESHOLD_HARD);
+    const est = estimateMessagesTokens([...systemMsgs, ...nonSystemMsgs]);
+    if (est <= ceiling) return json;
+    json.messages = hardTruncateMessages([...systemMsgs, ...nonSystemMsgs], ceiling);
+    return json;
 }
 
 async function callSummarize(model: string, messages: any[], targetUrl: string): Promise<string | null> {

@@ -108,11 +108,14 @@ async function main() {
         console.log(`${GREEN}✅ copilot-api is ready on port ${COPILOT_API_PORT}${RESET}`);
     }
 
-    // 1.5 If --max mode, pre-fetch and cache model token limits
+    // 1.5 Pre-fetch and cache model token limits (used by both --max soft compaction
+    // and the always-on hard-threshold safety net).
     if (isMaxMode()) {
-        console.log(`${CYAN}🔥 Max mode enabled — will auto-compact long conversations${RESET}`);
-        await fetchAndCacheModelLimits(`http://localhost:${COPILOT_API_PORT}`);
+        console.log(`${CYAN}🔥 Max mode enabled — will auto-compact long conversations at 80%${RESET}`);
+    } else {
+        console.log(`${CYAN}🛡️  Safety-net compaction enabled (auto-compact at 95% of model limit)${RESET}`);
     }
+    await fetchAndCacheModelLimits(`http://localhost:${COPILOT_API_PORT}`);
 
     // 2. Check if proxy is already running
     const proxyAlreadyRunning = await isPortInUse(PROXY_PORT);

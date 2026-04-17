@@ -146,7 +146,15 @@ const transformMessages = (json: any, isClaude: boolean): void => {
                 let resultContent = tr.content;
                 if (typeof resultContent !== 'string') {
                     if (Array.isArray(resultContent)) {
-                        resultContent = resultContent.map((p: any) => p.text || JSON.stringify(p)).join('\n');
+                        resultContent = resultContent.map((p: any) => {
+                            if (p.type === 'text') return p.text || '';
+                            // Strip base64 images from tool results — Copilot doesn't
+                            // support vision and the base64 blob blows up the token count.
+                            if (p.type === 'image' || p.source?.type === 'base64') {
+                                return '[Image Omitted]';
+                            }
+                            return JSON.stringify(p);
+                        }).join('\n');
                     } else {
                         resultContent = JSON.stringify(resultContent);
                     }

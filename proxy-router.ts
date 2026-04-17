@@ -321,10 +321,10 @@ Bun.serve({
 
         logTransformedRequest(json);
 
-        // ── Max mode: compact long conversations before sending ───────────
-        if (isMaxMode()) {
-            json = await compactIfNeeded(json, targetModel, TARGET_URL);
-        }
+        // ── Context compaction ────────────────────────────────────────────
+        // Always run: with --max this compacts aggressively at 80%; without --max
+        // it acts as a safety net at 95% so long Cursor sessions don't overflow.
+        json = await compactIfNeeded(json, targetModel, TARGET_URL);
 
         const headers = new Headers(req.headers);
         headers.set("host", targetUrl.host);
