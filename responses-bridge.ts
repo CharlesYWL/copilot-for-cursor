@@ -82,7 +82,8 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
         });
     }
 
-    if (json.max_tokens) responsesReq.max_output_tokens = Math.max(json.max_tokens, 16);
+    const tokenCap = json.max_output_tokens ?? json.max_completion_tokens ?? json.max_tokens;
+    if (tokenCap) responsesReq.max_output_tokens = Math.max(tokenCap, 16);
     if (json.temperature !== undefined) responsesReq.temperature = json.temperature;
     if (json.top_p !== undefined) responsesReq.top_p = json.top_p;
 
