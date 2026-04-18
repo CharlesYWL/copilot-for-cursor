@@ -268,16 +268,18 @@ export function hardTruncateMessages(messages: any[], targetTokens: number): any
     stripDanglingToolCalls(rest);
 
     // Final safety net: if the remaining messages are still over budget (e.g.
-    // the last user message alone is enormous), progressively shrink the tail
-    // message's content until we fit or can't shrink any further.
-    const MAX_SHRINK_ATTEMPTS = 20;
+    // the last user message alone is enormous, or the preserved assistant's
+    // `tool_calls[].function.arguments` is huge), progressively shrink the
+    // largest shrinkable string anywhere in the tail until we fit or can't
+    // shrink any further.
+    const MAX_SHRINK_ATTEMPTS = 40;
     let shrinkAttempts = 0;
     while (
         rest.length > 0 &&
         estimateMessagesTokens([...system, ...rest]) > targetTokens &&
         shrinkAttempts++ < MAX_SHRINK_ATTEMPTS
     ) {
-        if (!shrinkLastMessageContent(rest[rest.length - 1])) break;
+        if (!shrinkLargestPayload(rest)) break;
     }
 
     if (dropped > 0) {
@@ -300,27 +302,66 @@ function stripDanglingToolCalls(rest: any[]): void {
     }
 }
 
-function shrinkLastMessageContent(msg: any): boolean {
-    // Floor below which halving stops paying off — keep enough chars for the
-    // message to remain meaningful to the model.
-    const MIN_SHRINKABLE_LENGTH = 500;
-    const serialize = (): string => {
-        if (typeof msg.content === 'string') return msg.content;
-        if (Array.isArray(msg.content)) {
-            return msg.content
-                .map((p: any) => (p?.type === 'text' ? (p.text || '') : JSON.stringify(p)))
-                .join('\n');
-        }
-        return '';
+// Floor below which halving stops paying off.
+const MIN_SHRINKABLE_LENGTH = 500;
+
+// Finds the single largest shrinkable string anywhere in `rest` — message
+// content (string or text-part), tool-result content, or assistant
+// `tool_calls[].function.arguments` — and halves it. Returns false when no
+// target remains above MIN_SHRINKABLE_LENGTH (nothing more we can do).
+function shrinkLargestPayload(rest: any[]): boolean {
+    type Target =
+        | { kind: 'content-string'; msg: any; length: number }
+        | { kind: 'content-array'; msg: any; length: number }
+        | { kind: 'tool-call-args'; tc: any; length: number };
+
+    let best: Target | null = null;
+    const consider = (t: Target) => {
+        if (t.length <= MIN_SHRINKABLE_LENGTH) return;
+        if (!best || t.length > best.length) best = t;
     };
-    const text = serialize();
-    if (text.length <= MIN_SHRINKABLE_LENGTH) return false;
-    const truncated = truncateContent(text, Math.floor(text.length / 2));
-    if (typeof msg.content === 'string') {
-        msg.content = truncated;
-    } else {
-        msg.content = [{ type: 'text', text: truncated }];
+
+    for (const msg of rest) {
+        if (typeof msg.content === 'string') {
+            consider({ kind: 'content-string', msg, length: msg.content.length });
+        } else if (Array.isArray(msg.content)) {
+            let total = 0;
+            for (const p of msg.content) {
+                total += p?.type === 'text' ? (p.text || '').length : JSON.stringify(p).length;
+            }
+            consider({ kind: 'content-array', msg, length: total });
+        }
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+            for (const tc of msg.tool_calls) {
+                const args = tc?.function?.arguments;
+                if (typeof args === 'string') {
+                    consider({ kind: 'tool-call-args', tc, length: args.length });
+                }
+            }
+        }
     }
+
+    if (!best) return false;
+    const target = best as Target;
+
+    if (target.kind === 'content-string') {
+        target.msg.content = truncateContent(
+            target.msg.content,
+            Math.floor(target.msg.content.length / 2),
+        );
+        return true;
+    }
+    if (target.kind === 'content-array') {
+        const joined = target.msg.content
+            .map((p: any) => (p?.type === 'text' ? (p.text || '') : JSON.stringify(p)))
+            .join('\n');
+        const truncated = truncateContent(joined, Math.floor(joined.length / 2));
+        target.msg.content = [{ type: 'text', text: truncated }];
+        return true;
+    }
+    // tool-call-args
+    const args = target.tc.function.arguments as string;
+    target.tc.function.arguments = truncateContent(args, Math.floor(args.length / 2));
     return true;
 }
 
