@@ -14,7 +14,8 @@
   "scripts": {
     "build": "bun build start.ts --outdir dist --target node",
     "dev": "bun run start.ts",
-    "start": "bun dist/start.js"
+    "start": "bun dist/start.js",
+    "test": "bun test tests/"
   },
   "keywords": [
     "copilot",

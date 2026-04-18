@@ -10,7 +10,7 @@ const cleanSchema = (schema: any): any => {
     return schema;
 };
 
-const sanitizeContentPart = (part: any, isClaude: boolean): any | null => {
+export const sanitizeContentPart = (part: any, isClaude: boolean): any | null => {
     if (part.cache_control) delete part.cache_control;
 
     if (isClaude && part.type === 'image') {
@@ -23,7 +23,17 @@ const sanitizeContentPart = (part: any, isClaude: boolean): any | null => {
 
     if (part.type === 'text' || part.type === 'image_url') return part;
 
-    return null;
+    // Unknown part type (e.g. Anthropic `document` / PDF-style payloads).
+    // The downstream chat-completions schema only understands `text` and
+    // `image_url` parts, so we can't forward the structure verbatim. Rather
+    // than silently drop the part, fall back to a lossy text serialization so
+    // the model still sees *something*. Strip any base64 data blob first so a
+    // multi-MB payload doesn't blow up the token count.
+    const safe: any = { ...part };
+    if (safe.source && typeof safe.source === 'object' && safe.source.type === 'base64') {
+        safe.source = { ...safe.source, data: '[base64 data omitted]' };
+    }
+    return { type: 'text', text: `[${part.type || 'unknown'} part: ${JSON.stringify(safe)}]` };
 };
 
 const transformAnthropicFields = (json: any): void => {

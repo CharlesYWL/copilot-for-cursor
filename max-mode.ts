@@ -235,17 +235,25 @@ export async function compactIfNeeded(
 // ── Hard truncation (last-resort safety net) ──────────────────────────────────
 // Drops oldest non-system messages until estimated tokens are under the hard ceiling.
 // Zero LLM calls — used when summarization fails or there's nothing worth summarizing.
-function hardTruncateMessages(messages: any[], targetTokens: number): any[] {
+export function hardTruncateMessages(messages: any[], targetTokens: number): any[] {
     const system = messages.filter((m: any) => m.role === 'system');
     let rest = messages.filter((m: any) => m.role !== 'system');
     let dropped = 0;
 
-    // Drop oldest non-system messages until we're under budget or only one
-    // message remains. Any `role: 'tool'` message that ends up at the front
-    // references an earlier assistant tool_call that has now been dropped;
-    // leaving it in would produce an orphan tool_call_id reference that the
-    // upstream API rejects, so drop those proactively too.
+    // Drop oldest non-system messages until we're under budget. Two invariants:
+    //   (a) `rest` must never go empty — downstream expects at least one
+    //       non-system turn, and `shrinkLastMessageContent` below relies on a
+    //       tail message existing.
+    //   (b) A leading `role: 'tool'` message references an assistant tool_call
+    //       that we've already dropped, so upstream rejects it as an orphan
+    //       tool_call_id. Proactively drop such orphans after each shift.
+    // We use a look-ahead: if the next drop (plus any orphan cleanup) would
+    // collapse `rest` to empty, we bail out early and defer to the shrink loop.
     while (rest.length > 1 && estimateMessagesTokens([...system, ...rest]) > targetTokens) {
+        const peek = rest.slice(1);
+        while (peek.length > 0 && peek[0].role === 'tool') peek.shift();
+        if (peek.length === 0) break;
+
         rest.shift();
         dropped++;
         while (rest.length > 0 && rest[0].role === 'tool') {
