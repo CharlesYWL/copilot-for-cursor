@@ -343,12 +343,29 @@ Bun.serve({
             const chatId = `chatcmpl-proxy-${++responseCounter}`;
             try {
                 const bridgeResult = await handleResponsesAPIBridge(json, req, chatId, TARGET_URL);
+
+                if (json.stream && bridgeResult.response.body) {
+                    // For streaming, usage is embedded in the SSE stream (not available
+                    // synchronously). Wrap with createStreamProxy so usage and duration
+                    // are captured when the stream finishes, matching Chat Completions behaviour.
+                    const streamHeaders = new Headers(bridgeResult.response.headers);
+                    return createStreamProxy(bridgeResult.response.body, streamHeaders, (usage) => {
+                        addRequestLog({
+                            id: getNextRequestId(), timestamp: startTime, model: targetModel,
+                            promptTokens: usage.promptTokens, completionTokens: usage.completionTokens,
+                            totalTokens: usage.totalTokens,
+                            status: bridgeResult.response.status, duration: Date.now() - startTime, stream: true,
+                        });
+                    });
+                }
+
+                // Non-streaming: usage is returned directly by the bridge
                 addRequestLog({
                     id: getNextRequestId(), timestamp: startTime, model: targetModel,
                     promptTokens: bridgeResult.usage.promptTokens,
                     completionTokens: bridgeResult.usage.completionTokens,
                     totalTokens: bridgeResult.usage.totalTokens,
-                    status: bridgeResult.response.status, duration: Date.now() - startTime, stream: !!json.stream,
+                    status: bridgeResult.response.status, duration: Date.now() - startTime, stream: false,
                 });
                 return bridgeResult.response;
             } catch (e: any) {
