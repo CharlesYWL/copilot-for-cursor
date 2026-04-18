@@ -1,4 +1,4 @@
-import { convertResponsesSyncToChatCompletions, convertResponsesStreamToChatCompletions } from './responses-converters';
+import { convertResponsesSyncToChatCompletions, convertResponsesStreamToChatCompletions, ResponsesStreamUsage } from './responses-converters';
 import { getUpstreamAuthHeader } from './upstream-auth';
 
 export interface BridgeResult {
@@ -6,7 +6,13 @@ export interface BridgeResult {
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
-export async function handleResponsesAPIBridge(json: any, req: Request, chatId: string, targetUrl: string): Promise<BridgeResult> {
+export async function handleResponsesAPIBridge(
+    json: any,
+    req: Request,
+    chatId: string,
+    targetUrl: string,
+    onStreamComplete?: (usage: ResponsesStreamUsage) => void,
+): Promise<BridgeResult> {
     const corsHeaders = { "Access-Control-Allow-Origin": "*" };
 
     const responsesReq: any = {
@@ -123,8 +129,8 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
 
     if (json.stream && response.body) {
         return {
-            response: convertResponsesStreamToChatCompletions(response, json.model, chatId, corsHeaders),
-            // Streaming usage is embedded in the stream; not available synchronously
+            response: convertResponsesStreamToChatCompletions(response, json.model, chatId, corsHeaders, onStreamComplete),
+            // Streaming usage will be reported via onStreamComplete callback
             usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
         };
     } else {

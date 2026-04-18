@@ -47,7 +47,19 @@ export function convertResponsesSyncToChatCompletions(data: any, model: string, 
     });
 }
 
-export function convertResponsesStreamToChatCompletions(response: Response, model: string, chatId: string, corsHeaders: any) {
+export interface ResponsesStreamUsage {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+}
+
+export function convertResponsesStreamToChatCompletions(
+    response: Response,
+    model: string,
+    chatId: string,
+    corsHeaders: any,
+    onComplete?: (usage: ResponsesStreamUsage) => void,
+) {
     if (!response.body) {
         return new Response(JSON.stringify({ error: 'No response body' }), {
             status: 502,
@@ -61,6 +73,7 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
     let toolCallIndex = 0;
     let sentRole = false;
     let chunkCount = 0;
+    let extractedUsage: ResponsesStreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
     const makeChatChunk = (delta: any, finishReason: string | null = null) => {
         const chunk: any = {
@@ -125,6 +138,11 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
                 const finishReason = hasToolCalls ? 'tool_calls' : 'stop';
                 controller.enqueue(encoder.encode(makeChatChunk({}, finishReason)));
                 if (event.response?.usage) {
+                    extractedUsage = {
+                        promptTokens: event.response.usage.input_tokens || 0,
+                        completionTokens: event.response.usage.output_tokens || 0,
+                        totalTokens: event.response.usage.total_tokens || 0,
+                    };
                     const usageChunk: any = {
                         id: chatId, object: 'chat.completion.chunk',
                         created: Math.floor(Date.now() / 1000), model,
@@ -153,6 +171,7 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
                         }
                         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
                         console.log(`✅ Responses→Chat stream complete: ${chunkCount} events processed`);
+                        if (onComplete) onComplete(extractedUsage);
                         controller.close();
                         return;
                     }
@@ -164,8 +183,14 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
                 }
             } catch (err: any) {
                 console.error('❌ Responses stream conversion error:', err);
+                if (onComplete) onComplete(extractedUsage);
                 try { controller.close(); } catch {}
             }
+        },
+        cancel() {
+            console.log(`⚠️ Responses stream cancelled by client after ${chunkCount} events`);
+            if (onComplete) onComplete(extractedUsage);
+            try { reader.cancel(); } catch {}
         }
     });
 
