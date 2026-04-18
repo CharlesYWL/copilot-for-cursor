@@ -13,7 +13,7 @@ const cleanSchema = (schema: any): any => {
 const sanitizeContentPart = (part: any, isClaude: boolean): any | null => {
     if (part.cache_control) delete part.cache_control;
 
-    if (isClaude && (part.type === 'image' || (part.source?.type === 'base64'))) {
+    if (isClaude && part.type === 'image') {
         return { type: 'text', text: '[Image Omitted]' };
     }
     if (part.type === 'image' && part.source?.type === 'base64') {
@@ -150,7 +150,9 @@ const transformMessages = (json: any, isClaude: boolean): void => {
                             if (p.type === 'text') return p.text || '';
                             // Strip base64 images from tool results — Copilot doesn't
                             // support vision and the base64 blob blows up the token count.
-                            if (p.type === 'image' || p.source?.type === 'base64') {
+                            // Narrow to image parts only so other base64-backed payloads
+                            // (e.g. document/pdf) aren't silently replaced.
+                            if (p.type === 'image') {
                                 return '[Image Omitted]';
                             }
                             return JSON.stringify(p);

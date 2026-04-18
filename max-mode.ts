@@ -239,14 +239,81 @@ function hardTruncateMessages(messages: any[], targetTokens: number): any[] {
     const system = messages.filter((m: any) => m.role === 'system');
     let rest = messages.filter((m: any) => m.role !== 'system');
     let dropped = 0;
-    while (rest.length > 2 && estimateMessagesTokens([...system, ...rest]) > targetTokens) {
+
+    // Drop oldest non-system messages until we're under budget or only one
+    // message remains. Any `role: 'tool'` message that ends up at the front
+    // references an earlier assistant tool_call that has now been dropped;
+    // leaving it in would produce an orphan tool_call_id reference that the
+    // upstream API rejects, so drop those proactively too.
+    while (rest.length > 1 && estimateMessagesTokens([...system, ...rest]) > targetTokens) {
         rest.shift();
         dropped++;
+        while (rest.length > 0 && rest[0].role === 'tool') {
+            rest.shift();
+            dropped++;
+        }
     }
+
+    // If an assistant message kept at the front has tool_calls whose matching
+    // `role: 'tool'` results were dropped, strip those ids to keep the request
+    // protocol-valid.
+    stripDanglingToolCalls(rest);
+
+    // Final safety net: if the remaining messages are still over budget (e.g.
+    // the last user message alone is enormous), progressively shrink the tail
+    // message's content until we fit or can't shrink any further.
+    const MAX_SHRINK_ATTEMPTS = 20;
+    let shrinkAttempts = 0;
+    while (
+        rest.length > 0 &&
+        estimateMessagesTokens([...system, ...rest]) > targetTokens &&
+        shrinkAttempts++ < MAX_SHRINK_ATTEMPTS
+    ) {
+        if (!shrinkLastMessageContent(rest[rest.length - 1])) break;
+    }
+
     if (dropped > 0) {
         console.log(`🗜️ Hard truncation: dropped ${dropped} oldest message(s) to fit token budget`);
     }
     return [...system, ...rest];
+}
+
+function stripDanglingToolCalls(rest: any[]): void {
+    const answered = new Set<string>();
+    for (const m of rest) {
+        if (m.role === 'tool' && m.tool_call_id) answered.add(m.tool_call_id);
+    }
+    for (const m of rest) {
+        if (m.role === 'assistant' && Array.isArray(m.tool_calls)) {
+            const kept = m.tool_calls.filter((tc: any) => tc?.id && answered.has(tc.id));
+            if (kept.length === 0) delete m.tool_calls;
+            else m.tool_calls = kept;
+        }
+    }
+}
+
+function shrinkLastMessageContent(msg: any): boolean {
+    // Floor below which halving stops paying off — keep enough chars for the
+    // message to remain meaningful to the model.
+    const MIN_SHRINKABLE_LENGTH = 500;
+    const serialize = (): string => {
+        if (typeof msg.content === 'string') return msg.content;
+        if (Array.isArray(msg.content)) {
+            return msg.content
+                .map((p: any) => (p?.type === 'text' ? (p.text || '') : JSON.stringify(p)))
+                .join('\n');
+        }
+        return '';
+    };
+    const text = serialize();
+    if (text.length <= MIN_SHRINKABLE_LENGTH) return false;
+    const truncated = truncateContent(text, Math.floor(text.length / 2));
+    if (typeof msg.content === 'string') {
+        msg.content = truncated;
+    } else {
+        msg.content = [{ type: 'text', text: truncated }];
+    }
+    return true;
 }
 
 function hardTruncateIfOver(
