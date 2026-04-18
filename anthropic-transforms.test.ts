@@ -166,3 +166,103 @@ describe('normalizeRequest — tool_result image stripping', () => {
         expect(transformedSize).toBeLessThan(2_000);
     });
 });
+
+describe('normalizeRequest — base64 stripping scope', () => {
+    it('does NOT strip non-image parts that have source.type=base64 in tool_result', () => {
+        const json = {
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'toolu_b64',
+                            content: [
+                                { type: 'text', text: 'Some text' },
+                                {
+                                    type: 'document',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: 'application/pdf',
+                                        data: 'JVBERi0xLjQK',
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        normalizeRequest(json, true);
+
+        const toolMsg = json.messages.find((m: any) => m.role === 'tool');
+        expect(toolMsg).toBeDefined();
+        // The document part should NOT be replaced with [Image Omitted]
+        expect(toolMsg!.content).not.toContain('[Image Omitted]');
+    });
+
+    it('does NOT strip non-image base64 parts in sanitizeContentPart (isClaude=true)', () => {
+        const json = {
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'document',
+                            source: {
+                                type: 'base64',
+                                media_type: 'application/pdf',
+                                data: 'JVBERi0xLjQK',
+                            },
+                        },
+                    ],
+                },
+            ],
+        };
+
+        normalizeRequest(json, true);
+
+        // The message should NOT contain [Image Omitted]
+        const userMsg = json.messages.find((m: any) => m.role === 'user');
+        if (userMsg) {
+            const content = typeof userMsg.content === 'string'
+                ? userMsg.content
+                : JSON.stringify(userMsg.content);
+            expect(content).not.toContain('[Image Omitted]');
+        }
+    });
+
+    it('still strips actual image parts with base64 source', () => {
+        const json = {
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'toolu_img',
+                            content: [
+                                {
+                                    type: 'image',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: 'image/png',
+                                        data: 'iVBORw0KGgo=',
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        normalizeRequest(json, true);
+
+        const toolMsg = json.messages.find((m: any) => m.role === 'tool');
+        expect(toolMsg).toBeDefined();
+        expect(toolMsg!.content).toContain('[Image Omitted]');
+        expect(toolMsg!.content).not.toContain('iVBORw0KGgo');
+    });
+});

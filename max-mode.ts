@@ -87,7 +87,7 @@ function estimateTokens(text: string): number {
     return Math.ceil(ascii / 4 + nonAscii / 1.5);
 }
 
-function estimateMessagesTokens(messages: any[]): number {
+export function estimateMessagesTokens(messages: any[]): number {
     let total = 0;
     for (const msg of messages) {
         // role overhead
@@ -235,18 +235,97 @@ export async function compactIfNeeded(
 // ── Hard truncation (last-resort safety net) ──────────────────────────────────
 // Drops oldest non-system messages until estimated tokens are under the hard ceiling.
 // Zero LLM calls — used when summarization fails or there's nothing worth summarizing.
-function hardTruncateMessages(messages: any[], targetTokens: number): any[] {
+// Guarantees the returned prompt is within budget (or as close as possible).
+export function hardTruncateMessages(messages: any[], targetTokens: number): any[] {
     const system = messages.filter((m: any) => m.role === 'system');
     let rest = messages.filter((m: any) => m.role !== 'system');
     let dropped = 0;
+
+    // Phase 1: Drop oldest non-system messages, respecting tool-call boundaries.
     while (rest.length > 2 && estimateMessagesTokens([...system, ...rest]) > targetTokens) {
+        const removed = rest.shift()!;
+        dropped++;
+        // If we removed an assistant message with tool_calls, also remove
+        // the immediately following tool result messages that belong to it.
+        if (removed.role === 'assistant' && Array.isArray(removed.tool_calls) && removed.tool_calls.length > 0) {
+            const toolCallIds = new Set(removed.tool_calls.map((tc: any) => tc.id));
+            while (rest.length > 2 && rest[0]?.role === 'tool' && toolCallIds.has(rest[0].tool_call_id)) {
+                rest.shift();
+                dropped++;
+            }
+        }
+    }
+    // Clean up orphaned tool messages at the front (their assistant was already dropped).
+    while (rest.length > 2 && rest[0]?.role === 'tool') {
         rest.shift();
         dropped++;
     }
+
+    // Phase 2: If still over budget, truncate content of remaining non-system messages.
+    // Repeatedly halve the longest message until we fit (converges in O(log n) iterations).
+    while (estimateMessagesTokens([...system, ...rest]) > targetTokens) {
+        let longestIdx = -1;
+        let longestLen = 200; // minimum content length threshold
+        for (let i = 0; i < rest.length; i++) {
+            const len = getMessageTextLength(rest[i]);
+            if (len > longestLen) {
+                longestLen = len;
+                longestIdx = i;
+            }
+        }
+        if (longestIdx === -1) break;
+        truncateMessageText(rest[longestIdx], Math.floor(longestLen / 2));
+    }
+
+    // Phase 3: If still over budget (e.g. huge system prompt), truncate system content.
+    while (estimateMessagesTokens([...system, ...rest]) > targetTokens) {
+        let longestIdx = -1;
+        let longestLen = 500; // preserve at least 500 chars of system prompt
+        for (let i = 0; i < system.length; i++) {
+            const len = getMessageTextLength(system[i]);
+            if (len > longestLen) {
+                longestLen = len;
+                longestIdx = i;
+            }
+        }
+        if (longestIdx === -1) break;
+        truncateMessageText(system[longestIdx], Math.floor(longestLen / 2));
+    }
+
     if (dropped > 0) {
         console.log(`🗜️ Hard truncation: dropped ${dropped} oldest message(s) to fit token budget`);
     }
+    const finalEst = estimateMessagesTokens([...system, ...rest]);
+    if (finalEst > targetTokens) {
+        console.warn(`⚠️ Hard truncation: could not reduce below ${finalEst} tokens (target: ${targetTokens})`);
+    }
     return [...system, ...rest];
+}
+
+// Returns the total text length of a message's content (string or array of text parts).
+function getMessageTextLength(msg: any): number {
+    if (typeof msg.content === 'string') return msg.content.length;
+    if (Array.isArray(msg.content)) {
+        let total = 0;
+        for (const part of msg.content) {
+            if (part.type === 'text') total += (part.text?.length || 0);
+        }
+        return total;
+    }
+    return 0;
+}
+
+// Truncates the text content of a message to maxChars.
+function truncateMessageText(msg: any, maxChars: number): void {
+    if (typeof msg.content === 'string') {
+        msg.content = truncateContent(msg.content, maxChars);
+    } else if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+            if (part.type === 'text' && part.text && part.text.length > maxChars) {
+                part.text = truncateContent(part.text, maxChars);
+            }
+        }
+    }
 }
 
 function hardTruncateIfOver(
