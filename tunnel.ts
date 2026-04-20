@@ -1,5 +1,5 @@
 import { spawn, type Subprocess } from 'bun';
-import { existsSync, mkdirSync, chmodSync, createWriteStream } from 'fs';
+import { existsSync, mkdirSync, chmodSync, createWriteStream, renameSync, rmSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { pipeline } from 'stream/promises';
@@ -53,17 +53,14 @@ export const subscribeTunnel = (cb: (s: TunnelState) => void): (() => void) => {
     };
 };
 
-const getCloudflaredDownloadUrl = (): { url: string; filename: string } | null => {
+const getCloudflaredAssetName = (): string | null => {
     const platform = process.platform;
     const arch = process.arch;
-    const base = 'https://github.com/cloudflare/cloudflared/releases/latest/download';
-
     if (platform === 'win32') {
-        const file = arch === 'arm64' ? 'cloudflared-windows-arm64.exe' : 'cloudflared-windows-amd64.exe';
-        return { url: `${base}/${file}`, filename: 'cloudflared.exe' };
-    }
-    if (platform === 'darwin') {
-        return null;
+        // Cloudflare does not publish a native Windows ARM64 build; the amd64
+        // binary runs fine under Windows-on-ARM x64 emulation.
+        if (arch === 'ia32') return 'cloudflared-windows-386.exe';
+        return 'cloudflared-windows-amd64.exe';
     }
     if (platform === 'linux') {
         const archMap: Record<string, string> = {
@@ -72,10 +69,51 @@ const getCloudflaredDownloadUrl = (): { url: string; filename: string } | null =
             arm: 'arm',
             ia32: '386',
         };
-        const a = archMap[arch] ?? 'amd64';
-        return { url: `${base}/cloudflared-linux-${a}`, filename: 'cloudflared' };
+        return `cloudflared-linux-${archMap[arch] ?? 'amd64'}`;
     }
+    // macOS ships as .tgz — skip automatic download for now.
     return null;
+};
+
+// GitHub's CDN occasionally returns 404 when no User-Agent header is present,
+// and multi-hop redirects through the `/latest/download/...` URL can fail on
+// some networks. Sending a UA and having an API-based fallback makes the
+// download far more reliable.
+const DOWNLOAD_HEADERS: Record<string, string> = {
+    'User-Agent': 'copilot-for-cursor/1.0 (+https://github.com/jeffrey-cao/copilot-for-cursor)',
+    Accept: 'application/octet-stream',
+};
+
+const downloadToFile = async (url: string, destPath: string): Promise<void> => {
+    const resp = await fetch(url, { redirect: 'follow', headers: DOWNLOAD_HEADERS });
+    if (!resp.ok || !resp.body) {
+        const bodySnippet = await resp.text().catch(() => '').then(t => t.slice(0, 200));
+        throw new Error(
+            `HTTP ${resp.status} ${resp.statusText} from ${url}${bodySnippet ? ` — ${bodySnippet}` : ''}`
+        );
+    }
+    const fileStream = createWriteStream(destPath);
+    await pipeline(resp.body as unknown as NodeJS.ReadableStream, fileStream);
+};
+
+const resolveAssetUrlViaApi = async (assetName: string): Promise<string> => {
+    const apiUrl = 'https://api.github.com/repos/cloudflare/cloudflared/releases/latest';
+    const resp = await fetch(apiUrl, {
+        redirect: 'follow',
+        headers: {
+            ...DOWNLOAD_HEADERS,
+            Accept: 'application/vnd.github+json',
+        },
+    });
+    if (!resp.ok) {
+        throw new Error(`GitHub API returned ${resp.status} ${resp.statusText} for ${apiUrl}`);
+    }
+    const release = (await resp.json()) as { assets?: Array<{ name: string; browser_download_url: string }> };
+    const asset = release.assets?.find(a => a.name === assetName);
+    if (!asset) {
+        throw new Error(`Asset ${assetName} not found in latest cloudflared release`);
+    }
+    return asset.browser_download_url;
 };
 
 const ensureCloudflaredBinary = async (): Promise<string> => {
@@ -85,20 +123,41 @@ const ensureCloudflaredBinary = async (): Promise<string> => {
     const localPath = join(BIN_DIR, filename);
     if (existsSync(localPath)) return localPath;
 
-    const dl = getCloudflaredDownloadUrl();
-    if (!dl) {
+    const assetName = getCloudflaredAssetName();
+    if (!assetName) {
         throw new Error(
             `Automatic download not supported on ${process.platform}. Install cloudflared manually (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) and ensure it's on PATH.`
         );
     }
 
-    const resp = await fetch(dl.url, { redirect: 'follow' });
-    if (!resp.ok || !resp.body) {
-        throw new Error(`Failed to download cloudflared: ${resp.status} ${resp.statusText}`);
+    const tmpPath = `${localPath}.downloading`;
+    if (existsSync(tmpPath)) {
+        try { rmSync(tmpPath); } catch {}
     }
 
-    const fileStream = createWriteStream(localPath);
-    await pipeline(resp.body as unknown as NodeJS.ReadableStream, fileStream);
+    const primaryUrl = `https://github.com/cloudflare/cloudflared/releases/latest/download/${assetName}`;
+    const errors: string[] = [];
+
+    try {
+        await downloadToFile(primaryUrl, tmpPath);
+    } catch (err: any) {
+        errors.push(`direct: ${err?.message ?? err}`);
+        // Fallback: resolve the exact versioned asset URL via the API and retry.
+        try {
+            const apiUrl = await resolveAssetUrlViaApi(assetName);
+            await downloadToFile(apiUrl, tmpPath);
+        } catch (err2: any) {
+            errors.push(`api: ${err2?.message ?? err2}`);
+            try { rmSync(tmpPath); } catch {}
+            throw new Error(
+                `Failed to download cloudflared after 2 attempts. ${errors.join(' | ')}. ` +
+                `You can install cloudflared manually from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/ ` +
+                `and place the binary at ${localPath}.`
+            );
+        }
+    }
+
+    renameSync(tmpPath, localPath);
 
     if (process.platform !== 'win32') {
         try {
