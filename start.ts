@@ -35,9 +35,22 @@ async function isPortInUse(port: number): Promise<boolean> {
     }
 }
 
-async function waitForPort(port: number, timeoutMs = 30000): Promise<boolean> {
+async function waitForPort(
+    port: number,
+    opts: { timeoutMs?: number; isAuthPending?: () => boolean } = {},
+): Promise<boolean> {
+    const { timeoutMs = 30000, isAuthPending } = opts;
+    // If the copilot-api prints a device-code prompt, it can take a while for
+    // the user to complete GitHub auth. Once that happens, stay on the extended
+    // deadline for the remainder of startup — even after the login line appears
+    // the server still needs a moment to bind the port.
+    const AUTH_TIMEOUT_MS = 10 * 60 * 1000;
     const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
+    let useExtendedDeadline = false;
+    while (true) {
+        if (isAuthPending?.()) useExtendedDeadline = true;
+        const deadline = useExtendedDeadline ? AUTH_TIMEOUT_MS : timeoutMs;
+        if (Date.now() - start >= deadline) return false;
         try {
             const resp = await fetch(`http://localhost:${port}/v1/models`, {
                 headers: { 'Authorization': getUpstreamAuthHeader() },
@@ -46,8 +59,22 @@ async function waitForPort(port: number, timeoutMs = 30000): Promise<boolean> {
         } catch {}
         await sleep(500);
     }
-    return false;
 }
+
+const openInBrowser = (url: string): void => {
+    try {
+        const platform = process.platform;
+        if (platform === 'win32') {
+            spawn(['cmd', '/c', 'start', '""', url], { stdout: 'ignore', stderr: 'ignore' });
+        } else if (platform === 'darwin') {
+            spawn(['open', url], { stdout: 'ignore', stderr: 'ignore' });
+        } else {
+            spawn(['xdg-open', url], { stdout: 'ignore', stderr: 'ignore' });
+        }
+    } catch {
+        // Best-effort; user can open URL manually if this fails.
+    }
+};
 
 async function main() {
     console.log(`${CYAN}🚀 Starting Copilot Proxy Stack...${RESET}\n`);
@@ -70,38 +97,59 @@ async function main() {
             stderr: 'pipe',
         });
 
-        // Stream copilot-api output with prefix
-        (async () => {
-            const reader = copilotProc!.stdout.getReader();
-            const decoder = new TextDecoder();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const text = decoder.decode(value, { stream: true });
-                for (const line of text.split('\n').filter(Boolean)) {
-                    console.log(`${RED}[copilot-api]${RESET} ${line}`);
-                }
-            }
-        })();
+        // Track whether copilot-api is waiting on GitHub device-code auth; while
+        // true, we extend the startup timeout so the user has time to complete it.
+        let awaitingDeviceAuth = false;
+        let browserOpened = false;
+        const DEVICE_CODE_REGEX = /enter the code\s+"?([A-Z0-9-]+)"?\s+in\s+(https?:\/\/\S+)/i;
 
-        (async () => {
-            const reader = copilotProc!.stderr.getReader();
+        const handleCopilotLine = (line: string): void => {
+            console.log(`${RED}[copilot-api]${RESET} ${line}`);
+            const match = line.match(DEVICE_CODE_REGEX);
+            if (match) {
+                awaitingDeviceAuth = true;
+                const [, code, url] = match;
+                console.log(
+                    `\n${YELLOW}🔐 First-time GitHub auth required.${RESET}\n` +
+                    `${YELLOW}   Opening ${url} — paste code: ${GREEN}${code}${RESET}\n` +
+                    `${YELLOW}   (waiting up to 10 minutes for you to finish)${RESET}\n`
+                );
+                if (!browserOpened) {
+                    browserOpened = true;
+                    openInBrowser(url);
+                }
+            }
+        };
+
+        const pipeStream = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
+            const reader = stream.getReader();
             const decoder = new TextDecoder();
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 const text = decoder.decode(value, { stream: true });
                 for (const line of text.split('\n').filter(Boolean)) {
-                    console.log(`${RED}[copilot-api]${RESET} ${line}`);
+                    handleCopilotLine(line);
                 }
             }
-        })();
+        };
+
+        void pipeStream(copilotProc!.stdout as ReadableStream<Uint8Array>);
+        void pipeStream(copilotProc!.stderr as ReadableStream<Uint8Array>);
 
         // Wait for copilot-api to be ready
         console.log(`${YELLOW}⏳ Waiting for copilot-api to be ready...${RESET}`);
-        const ready = await waitForPort(COPILOT_API_PORT);
+        const ready = await waitForPort(COPILOT_API_PORT, {
+            timeoutMs: 30000,
+            isAuthPending: () => awaitingDeviceAuth,
+        });
         if (!ready) {
-            console.error(`${RED}❌ copilot-api failed to start within 30s${RESET}`);
+            console.error(
+                `${RED}❌ copilot-api failed to start.${RESET}\n` +
+                `${YELLOW}   If this is your first run, try authenticating separately:${RESET}\n` +
+                `${YELLOW}     npx @jeffreycao/copilot-api@latest auth${RESET}\n` +
+                `${YELLOW}   Then re-run this command.${RESET}`
+            );
             copilotProc.kill();
             process.exit(1);
         }

@@ -230,6 +230,31 @@ The proxy auto-routes these. Make sure you're running the latest version.
 **"connection refused":**
 Ensure services are running: `bun run start.ts` or check `http://localhost:4142`.
 
+**GitHub auth never completes / "copilot-api failed to start":**
+On first run, `copilot-api` uses GitHub's device-code flow and prints a line like
+`Please enter the code "XXXX-XXXX" in https://github.com/login/device`. The launcher
+now auto-opens the browser and waits up to 10 minutes for you to finish. If that
+fails (firewall, corporate proxy, SSO redirect, etc.), authenticate directly against
+`@jeffreycao/copilot-api` and then re-run this tool:
+
+```bash
+# Run the device-code flow explicitly — this caches the token locally.
+npx @jeffreycao/copilot-api@latest auth
+
+# Then start the stack normally:
+bun run start.ts
+# or
+npx copilot-for-cursor
+```
+
+The token is stored at:
+
+- **Windows:** `%USERPROFILE%\.local\share\copilot-api\github_token`
+- **macOS / Linux:** `~/.local/share/copilot-api/github_token`
+
+To reset auth, delete that file (and optionally revoke the device at
+https://github.com/settings/apps/authorizations).
+
 **Max mode not compacting:**
 Compaction only triggers when estimated tokens exceed 80% of the model's limit and there are at least 15 messages. Check the console log for `🗜️ Max mode` messages.
 
