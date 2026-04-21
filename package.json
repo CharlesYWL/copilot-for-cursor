@@ -1,6 +1,6 @@
 {
   "name": "copilot-for-cursor",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Proxy that bridges GitHub Copilot API to Cursor IDE — translates Anthropic format, bridges Responses API for GPT 5.x, and more",
   "bin": {
     "copilot-for-cursor": "bin/cli.js"
