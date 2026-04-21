@@ -54,6 +54,22 @@ const transformAnthropicFields = (json: any): void => {
         delete json.max_tokens_to_sample;
     }
 
+    // Cursor hard-codes max_tokens: 4096, which is too small for Claude Opus
+    // with large prompts: reasoning tokens consume the budget before tool_call
+    // arguments are generated, producing empty `{}` args and finish_reason:
+    // "length". Cursor then retries with the "Invalid arguments" error,
+    // creating an infinite loop. Claude models support >=32k output, so raise
+    // the cap for Claude model targets.
+    const isClaudeModel = typeof json.model === 'string' && json.model.toLowerCase().includes('claude');
+    if (isClaudeModel) {
+        const CLAUDE_MIN_MAX_TOKENS = 32000;
+        const current = typeof json.max_tokens === 'number' ? json.max_tokens : 0;
+        if (current < CLAUDE_MIN_MAX_TOKENS) {
+            json.max_tokens = CLAUDE_MIN_MAX_TOKENS;
+            console.log(`🔧 Raised max_tokens ${current} → ${CLAUDE_MIN_MAX_TOKENS} for Claude model`);
+        }
+    }
+
     const anthropicOnlyFields = ['metadata', 'anthropic_version', 'top_k'];
     for (const field of anthropicOnlyFields) {
         if (json[field] !== undefined) {
