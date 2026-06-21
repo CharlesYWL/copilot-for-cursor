@@ -300,6 +300,41 @@ Bun.serve({
     }
 
     try {
+      // ── Native Responses API passthrough (for Codex CLI/app; codex 0.130+ requires wire_api="responses") ──
+      // Codex sends Responses-format requests to /v1/responses and expects Responses-format back.
+      // The chat/completions handler bridges responses→chat, which Codex can't consume — so we expose
+      // a direct passthrough: strip the cus- prefix and forward straight to upstream copilot-api
+      // /v1/responses, returning the body untouched (including SSE streams).
+      if (req.method === "POST" && url.pathname.endsWith("/responses")) {
+        let json = await req.json();
+        const originalModel = json.model;
+        if (json.model && typeof json.model === 'string' && json.model.startsWith(PREFIX)) {
+          json.model = json.model.slice(PREFIX.length);
+          console.log(`\uD83D\uDD04 [/responses] Rewriting model: ${originalModel} -> ${json.model}`);
+        }
+        const respModel = json.model;
+        const respBody = JSON.stringify(json);
+        const respUrl = new URL('/v1/responses', TARGET_URL);
+        const respHeaders = new Headers(req.headers);
+        respHeaders.set("host", respUrl.host);
+        respHeaders.set("content-type", "application/json");
+        respHeaders.set("content-length", String(new TextEncoder().encode(respBody).length));
+        respHeaders.set("authorization", getUpstreamAuthHeader());
+        respHeaders.delete("accept-encoding");
+        console.log(`\uD83D\uDD00 [/responses] passthrough \u2192 upstream for ${respModel} (stream=${!!json.stream})`);
+        const upstream = await fetch(respUrl.toString(), { method: "POST", headers: respHeaders, body: respBody });
+        console.log(`\uD83D\uDCE1 [/responses] upstream: ${upstream.status} | ${upstream.headers.get('content-type')}`);
+        const outHeaders = new Headers(upstream.headers);
+        outHeaders.set("Access-Control-Allow-Origin", "*");
+        if (!upstream.ok) {
+          const errText = await upstream.text();
+          console.error(`\u274C [/responses] upstream error (${upstream.status}):`, errText.slice(0, 500));
+          return new Response(errText, { status: upstream.status, headers: outHeaders });
+        }
+        // Stream passthrough (SSE) or buffered JSON, body returned verbatim in Responses format.
+        return new Response(upstream.body, { status: upstream.status, headers: outHeaders });
+      }
+
       if (req.method === "POST" && url.pathname.includes("/chat/completions")) {
         const startTime = Date.now();
         let json = await req.json();
