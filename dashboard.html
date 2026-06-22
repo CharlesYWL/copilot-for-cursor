@@ -13,9 +13,9 @@
     --bg-hover: rgba(255,255,255,0.03);
     --border: rgba(255,255,255,0.08);
     --border-light: rgba(255,255,255,0.14);
-    --text: #e8eaf3;
-    --text-dim: #8b90a8;
-    --text-muted: #5a607a;
+    --text: #eef0f8;
+    --text-dim: #a3a9c2;
+    --text-muted: #7c84a3;
     --accent: #7c8cff;
     --accent-2: #c084fc;
     --green: #34d399;
@@ -108,37 +108,40 @@ body {
     display: flex;
     gap: 4px;
     background: transparent;
-    padding: 16px 28px 0;
+    padding: 14px 28px 0;
     border-bottom: 1px solid var(--border);
 }
 .tab {
     padding: 10px 18px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-dim);
     cursor: pointer;
-    border-radius: 10px 10px 0 0;
+    border-radius: 9px 9px 0 0;
     border-bottom: 2px solid transparent;
-    transition: all .2s ease;
+    transition: color .2s ease, background .2s ease;
     user-select: none;
     position: relative;
     margin-bottom: -1px;
 }
-.tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
 .tab.active {
     color: var(--text);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-bottom-color: transparent;
+    background: linear-gradient(180deg, rgba(124,140,255,0.10), rgba(124,140,255,0));
 }
 .tab.active::after {
     content: '';
     position: absolute;
-    left: 14px; right: 14px;
+    left: 12px; right: 12px;
     bottom: -1px;
     height: 2px;
     background: var(--grad);
     border-radius: 2px;
+    box-shadow: 0 0 8px rgba(124,140,255,0.5);
+}
+.tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
 }
 
 /* ── Content ─────────────────────────────────────── */
@@ -162,7 +165,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 14px;
-    margin-bottom: 28px;
+    margin-bottom: 22px;
 }
 .card {
     background: var(--bg-card);
@@ -173,7 +176,11 @@ body {
     -webkit-backdrop-filter: blur(12px);
     transition: border-color .2s ease, transform .2s ease;
 }
-.card:hover { border-color: var(--border-light); }
+.card:hover {
+    border-color: var(--border-light);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+}
 .card-label {
     font-size: 11px;
     text-transform: uppercase;
@@ -233,7 +240,7 @@ body {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    margin-bottom: 28px;
+    margin-bottom: 22px;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
@@ -362,7 +369,7 @@ tr:hover td { background: var(--bg-hover); }
     word-break: break-all;
 }
 .log-line { display: block; }
-.log-line .ts { color: #4a5068; margin-right: 8px; }
+.log-line .ts { color: #6b7290; margin-right: 8px; }
 .log-line.LOG .lvl { color: var(--green); }
 .log-line.INFO .lvl { color: var(--blue); }
 .log-line.WARN .lvl { color: var(--yellow); }
@@ -381,6 +388,19 @@ tr:hover td { background: var(--bg-hover); }
 }
 @media (max-width: 640px) {
     .cards { grid-template-columns: 1fr; }
+    /* Let wide tables scroll horizontally instead of squashing */
+    .table-wrap { overflow-x: auto; }
+    .table-wrap table { min-width: 480px; }
+    .tunnel-config-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+    .content { padding: 16px 12px; }
+    .header { padding: 12px 14px; }
+    .header-title { font-size: 15px; }
+    .card { padding: 16px; }
+    .card-value { font-size: 22px; }
+    .tab { padding: 9px 14px; }
+    .copy-row { flex-wrap: wrap; }
 }
 
 /* ── Scrollbars ──────────────────────────────────── */
@@ -392,11 +412,84 @@ tr:hover td { background: var(--bg-hover); }
 /* ── Misc ────────────────────────────────────────── */
 .empty-state {
     text-align: center;
-    padding: 56px 16px;
-    color: var(--text-muted);
+    padding: 44px 16px;
+    color: var(--text-dim);
     font-size: 13px;
+    line-height: 1.5;
+}
+.empty-state .empty-icon {
+    display: block;
+    font-size: 24px;
+    margin-bottom: 10px;
+    opacity: .55;
 }
 .num { font-variant-numeric: tabular-nums; }
+
+/* ── Error states ────────────────────────────────── */
+.error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+    padding: 36px 20px;
+    color: var(--text-dim);
+}
+.error-state .error-icon {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(248,113,113,0.12);
+    border: 1px solid rgba(248,113,113,0.32);
+    color: var(--red);
+    font-size: 22px; font-weight: 700; line-height: 1;
+    margin-bottom: 6px;
+}
+.error-state .error-title { color: var(--text); font-weight: 600; font-size: 14px; }
+.error-state .error-msg {
+    font-size: 13px;
+    color: var(--text-dim);
+    max-width: 380px;
+    line-height: 1.5;
+}
+.error-state .error-msg code {
+    font-family: 'SF Mono','JetBrains Mono','Consolas',monospace;
+    font-size: 12px;
+    color: var(--text);
+}
+.retry-btn {
+    margin-top: 10px;
+    display: inline-flex; align-items: center; gap: 7px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-light);
+    color: var(--text);
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    transition: border-color .2s ease, color .2s ease, background .2s ease;
+}
+.retry-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(124,140,255,0.08); }
+.retry-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.error-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--red);
+    font-size: 13px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.error-inline .retry-link {
+    background: none; border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 13px; font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    padding: 0;
+}
+.error-inline .retry-link:hover { color: var(--accent-2); }
 
 /* ── Persistence bar ─────────────────────────────── */
 .persistence-bar {
@@ -550,7 +643,7 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
                 <h3 style="margin: 0; border: none; padding: 0;">Copilot API Keys</h3>
                 <button class="btn-primary" onclick="handleCreateUpstreamKey()">+ New Key</button>
             </div>
-            <p style="color: #888; font-size: 13px; margin-bottom: 12px;">
+            <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 12px;">
                 Keys stored in copilot-api's <code style="color:var(--accent)">config.json</code>. The first key is used by the proxy for upstream requests.
                 <br><span style="color:var(--yellow);">Note:</span> New keys require a copilot-api restart to take effect.
             </p>
@@ -575,12 +668,12 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            <p id="authStatus" style="color: #888; font-size: 13px; margin-bottom: 16px;">Loading...</p>
+            <p id="authStatus" style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">Loading...</p>
             
             <div id="keysSection" style="display: none;">
                 <div style="display: flex; gap: 8px; margin-bottom: 16px;">
                     <input type="text" id="keyNameInput" placeholder="Key name (e.g. Cursor)" 
-                        style="flex:1; background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px;">
+                        style="flex:1; padding: 9px 12px; font-size: 13px;">
                     <button class="btn-primary" onclick="createKey()">+ Create Key</button>
                 </div>
                 
@@ -696,7 +789,8 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
             </table>
         </div>
         <div id="usage-empty" class="empty-state" style="display:none">
-            No requests recorded yet. Send a chat completion to see usage.
+            <span class="empty-icon" aria-hidden="true">📊</span>
+            No requests recorded yet. Send a chat completion to see usage here.
         </div>
     </div>
 
@@ -718,7 +812,7 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
         </div>
 
         <div class="card" style="margin-bottom:16px;">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div class="tunnel-config-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div>
                     <label for="tunnel-provider" class="card-label" style="display:block; margin-bottom:6px;">Provider</label>
                     <select id="tunnel-provider" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px;">
@@ -835,6 +929,23 @@ function esc(s) {
     return d.innerHTML;
 }
 
+/* Reusable block-level error state with a retry affordance.
+   retryFn is a JS expression string, e.g. 'fetchModels()'. */
+function errorState(message, retryFn) {
+    return '<div class="error-state">' +
+        '<div class="error-icon" aria-hidden="true">!</div>' +
+        '<div class="error-title">Couldn\u2019t load data</div>' +
+        '<div class="error-msg">' + esc(message) + '</div>' +
+        '<button class="retry-btn" type="button" onclick="' + retryFn + '">\u21BB Retry</button>' +
+    '</div>';
+}
+
+/* Compact inline error for single-line value slots. */
+function errorInline(message, retryFn) {
+    return '<span class="error-inline">\u26A0 ' + esc(message) +
+        ' <button class="retry-link" type="button" onclick="' + retryFn + '">Retry</button></span>';
+}
+
 /* ── Tab 1: Models ──────────────────────────────────────────── */
 async function fetchModels() {
     try {
@@ -865,7 +976,12 @@ async function fetchModels() {
             tbody.appendChild(tr);
         });
     } catch (e) {
-        document.getElementById('models-loading').textContent = 'Failed to load models: ' + e.message;
+        const loading = document.getElementById('models-loading');
+        loading.className = '';
+        loading.style.display = '';
+        loading.innerHTML = errorState('Couldn\u2019t reach /api/models — ' + e.message + '. Check that the proxy is running, then retry.', 'fetchModels()');
+        document.getElementById('models-table').style.display = 'none';
+        document.getElementById('model-count').textContent = '—';
     }
 }
 fetchModels();
@@ -890,29 +1006,31 @@ async function loadUpstreamKeys() {
 
         renderUpstreamKeys(data.keys || []);
     } catch (e) {
-        document.getElementById('upstream-key-display').textContent = 'Failed to load';
+        const display = document.getElementById('upstream-key-display');
+        display.innerHTML = errorInline('Failed to load', 'loadUpstreamKeys()');
+        document.getElementById('upstream-key-copy-btn').style.display = 'none';
     }
 }
 
 function renderUpstreamKeys(maskedKeys) {
     const list = document.getElementById('upstreamKeysList');
     if (maskedKeys.length === 0) {
-        list.innerHTML = '<div style="color: #666; font-size: 13px; padding: 12px 0;">No API keys configured. Create one to authenticate with copilot-api.</div>';
+        list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 12px 0;">No API keys configured. Create one to authenticate with copilot-api.</div>';
         return;
     }
     list.innerHTML = '';
     maskedKeys.forEach((k, i) => {
         const row = document.createElement('div');
-        row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #222;';
+        row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border);';
         const badge = i === 0
             ? '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#1a2332;color:var(--accent);margin-left:8px;">Active</span>'
             : '';
         row.innerHTML =
             '<div style="flex: 1; min-width: 0;">' +
-                '<code style="color: #aaa; font-size: 13px;">' + esc(k) + '</code>' + badge +
+                '<code style="color: var(--text-dim); font-size: 13px;">' + esc(k) + '</code>' + badge +
             '</div>' +
             '<button class="copy-btn" title="Copy masked key" onclick="copyText(\'' + esc(k) + '\', this)">Copy</button>' +
-            '<button style="background: none; border: none; color: #666; cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete" data-key="' + esc(k) + '">🗑</button>';
+            '<button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete" data-key="' + esc(k) + '">🗑</button>';
         row.querySelector('button[title="Delete"]').addEventListener('click', function() { handleDeleteUpstreamKey(this.dataset.key); });
         list.appendChild(row);
     });
@@ -965,20 +1083,20 @@ async function loadAuthConfigUI() {
         document.getElementById('keysSection').style.display = 'block';
         renderKeys();
     } catch (e) {
-        document.getElementById('authStatus').textContent = 'Failed to load auth config';
+        document.getElementById('authStatus').innerHTML = errorInline('Failed to load auth config', 'loadAuthConfigUI()');
     }
 }
 
 function renderKeys() {
     const list = document.getElementById('keysList');
     if (authConfig.keys.length === 0) {
-        list.innerHTML = '<div style="color: #666; font-size: 13px; padding: 12px 0;">No API keys created yet.</div>';
+        list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 12px 0;">No API keys created yet.</div>';
         return;
     }
     list.innerHTML = '';
     authConfig.keys.forEach(k => {
         const row = document.createElement('div');
-        row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #222;';
+        row.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border);';
         row.innerHTML = `
             <label class="toggle" style="flex-shrink: 0;">
                 <input type="checkbox" ${k.active ? 'checked' : ''}>
@@ -986,10 +1104,10 @@ function renderKeys() {
             </label>
             <div style="flex: 1; min-width: 0;">
                 <div style="font-weight: 500; font-size: 14px;">${esc(k.name)}</div>
-                <code style="color: #888; font-size: 12px;">${esc(k.key)}</code>
+                <code style="color: var(--text-dim); font-size: 12px;">${esc(k.key)}</code>
             </div>
-            <div style="color: #666; font-size: 12px; white-space: nowrap;">${timeAgo(k.createdAt)}</div>
-            <button style="background: none; border: none; color: #666; cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete">🗑</button>
+            <div style="color: var(--text-muted); font-size: 12px; white-space: nowrap;">${timeAgo(k.createdAt)}</div>
+            <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 4px 8px;" title="Delete">🗑</button>
         `;
         row.querySelector('input[type="checkbox"]').addEventListener('change', function() { toggleKey(k.id, this.checked); });
         row.querySelector('button[title="Delete"]').addEventListener('click', function() { deleteKey(k.id); });
