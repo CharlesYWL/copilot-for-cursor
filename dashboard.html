@@ -26,6 +26,7 @@
     --orange: #fb923c;
     --radius: 14px;
     --radius-sm: 8px;
+    --mono: 'SF Mono', 'JetBrains Mono', 'Consolas', monospace;
     --grad: linear-gradient(135deg, #7c8cff 0%, #c084fc 100%);
     --grad-soft: linear-gradient(135deg, rgba(124,140,255,0.15), rgba(192,132,252,0.15));
     --shadow: 0 8px 32px rgba(0,0,0,0.4);
@@ -494,6 +495,135 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(124,140,255,0.15);
 }
+
+/* ═══════════ Usage tab redesign ═══════════ */
+.usage-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+.usage-toolbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.usage-updated { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+.usage-updated .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.6); }
+.usage-select { font-size: 12px; padding: 7px 30px 7px 12px; border-radius: 8px; background: rgba(255,255,255,0.03); color: var(--text); border: 1px solid var(--border-light); cursor: pointer; }
+
+/* KPI cards */
+.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 24px; }
+.kpi { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease; }
+.kpi.clickable { cursor: pointer; }
+.kpi.clickable:hover { border-color: var(--border-light); transform: translateY(-2px); box-shadow: var(--shadow); }
+.kpi.clickable:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,140,255,0.18); }
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); font-weight: 600; }
+.kpi-value { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--text); }
+.kpi-value .u { font-size: 12px; color: var(--text-dim); font-weight: 500; margin-left: 3px; }
+.kpi-spark { width: 100%; height: 30px; display: block; }
+.kpi-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; min-height: 16px; }
+.kpi-sub { font-size: 11px; color: var(--text-dim); }
+.delta { font-family: var(--mono); font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+.delta.up { color: var(--green); }
+.delta.down { color: var(--red); }
+.delta.flat { color: var(--text-muted); }
+.dot-pin { width: 8px; height: 8px; border-radius: 2px; display: inline-block; vertical-align: middle; margin-right: 4px; }
+
+/* panels */
+.panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.panel.block { margin-bottom: 24px; }
+.panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.panel-title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.panel-title .hint { display: block; font-size: 11px; color: var(--text-dim); font-weight: 400; margin-top: 4px; letter-spacing: 0; text-transform: none; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+.swatch { width: 10px; height: 10px; border-radius: 3px; }
+
+/* charts */
+.charts-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 18px; margin-bottom: 24px; }
+.charts-grid .panel { margin-bottom: 0; }
+.chart { width: 100%; height: 230px; }
+.chart.short { height: 190px; }
+.axis-x { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--mono); font-size: 10px; color: var(--text-muted); gap: 6px; }
+.axis-x span { white-space: nowrap; }
+.grid-line { stroke: var(--border); stroke-width: 1; }
+.bar-in { fill: var(--accent); }
+.bar-out { fill: #aab4ff; }
+.bar-req { fill: rgba(232,234,243,0.22); }
+.bar-err { fill: var(--red); }
+.bar { transition: opacity .15s ease; }
+.bar:hover { opacity: .82; }
+.line-p95 { fill: none; stroke: var(--accent); stroke-width: 2; }
+.line-p50 { fill: none; stroke: rgba(232,234,243,0.45); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.area-lat { fill: rgba(124,140,255,0.12); }
+.lat-dot { fill: var(--bg-card-solid); stroke: var(--accent); stroke-width: 2; }
+.chart-note { fill: var(--text-muted); font-family: var(--mono); font-size: 12px; }
+
+.chart-tip { position: fixed; z-index: 120; pointer-events: none; opacity: 0; transition: opacity .15s ease; background: var(--bg-card-solid); color: var(--text); border: 1px solid var(--border-light); font-family: var(--mono); font-size: 11px; line-height: 1.55; padding: 8px 10px; border-radius: 8px; box-shadow: var(--shadow); white-space: nowrap; }
+.chart-tip.show { opacity: 1; }
+.chart-tip .tk { color: var(--accent); }
+
+/* usage tables */
+.u-table-wrap { overflow-x: auto; margin: 0 -6px; }
+.ds-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 600px; }
+.ds-table th, .ds-table td { padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; background: transparent; }
+.ds-table thead th { color: var(--text-dim); font-weight: 600; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; cursor: default; }
+.ds-table tbody tr { transition: background .15s ease; }
+.ds-table tbody tr:last-child td { border-bottom: none; }
+.ds-table tbody tr.clickable { cursor: pointer; }
+.ds-table tbody tr.clickable:hover td { background: var(--bg-hover); }
+.ds-table .r { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+.ds-table .chev { color: var(--text-muted); text-align: right; font-size: 16px; width: 18px; }
+.ds-table tbody tr.clickable:hover .chev { color: var(--accent); }
+
+.model-chip { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); }
+.model-chip .mk { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.share { display: flex; align-items: center; gap: 8px; }
+.share-bar { width: 84px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.share-bar > i { display: block; height: 100%; border-radius: 3px; }
+.share .pct { font-family: var(--mono); font-size: 11px; color: var(--text-dim); min-width: 34px; text-align: right; }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; font-family: var(--mono); }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill-ok { color: var(--green); background: rgba(52,211,153,0.12); }
+.pill-warn { color: var(--yellow); background: rgba(251,191,36,0.14); }
+.pill-err { color: var(--red); background: rgba(248,113,113,0.12); }
+.lat-cell { display: inline-flex; align-items: center; gap: 7px; justify-content: flex-end; }
+.lat-bar { width: 46px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; flex: none; }
+.lat-bar > i { display: block; height: 100%; border-radius: 3px; }
+
+.table-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; font-size: 11px; color: var(--text-dim); }
+.link-btn { background: none; border: 0; color: var(--accent); font-weight: 500; font-size: 12px; padding: 0; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+
+/* drawer (drill-down) */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.6); opacity: 0; visibility: hidden; transition: opacity .2s ease; z-index: 130; }
+.scrim.open { opacity: 1; visibility: visible; }
+.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(440px, 92vw); z-index: 140; background: var(--bg-card-solid); border-left: 1px solid var(--border); box-shadow: -8px 0 40px rgba(0,0,0,0.5); transform: translateX(100%); transition: transform .25s cubic-bezier(0.2,0,0,1); display: flex; flex-direction: column; }
+.drawer.open { transform: translateX(0); }
+.drawer-head { padding: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.drawer-eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.drawer-title { font-size: 18px; font-weight: 600; margin-top: 4px; letter-spacing: -0.01em; word-break: break-all; color: var(--text); }
+.x-btn { border: 1px solid var(--border-light); background: rgba(255,255,255,0.04); border-radius: 8px; width: 32px; height: 32px; display: grid; place-items: center; color: var(--text-dim); flex: none; cursor: pointer; transition: all .2s ease; }
+.x-btn:hover { border-color: var(--accent); color: var(--accent); }
+.x-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.drawer-body { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+.mini-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mini-kpi { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: rgba(255,255,255,0.02); }
+.mini-kpi .l { font-size: 11px; color: var(--text-dim); }
+.mini-kpi .v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; margin-top: 4px; color: var(--text); }
+.detail-list { display: flex; flex-direction: column; }
+.detail-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.detail-row:last-child { border-bottom: 0; }
+.detail-row .k { color: var(--text-dim); }
+.detail-row .v { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; word-break: break-all; color: var(--text); }
+.drawer-sub { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+.bar-split { height: 10px; border-radius: 999px; overflow: hidden; display: flex; background: rgba(255,255,255,0.08); }
+.bar-split > i { display: block; height: 100%; }
+
+@media (max-width: 1080px) {
+    .kpis { grid-template-columns: repeat(3, 1fr); }
+    .charts-grid { grid-template-columns: 1fr; }
+    .charts-grid .panel { margin-bottom: 0; }
+}
+@media (max-width: 640px) {
+    .kpis { grid-template-columns: 1fr 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .kpi, .drawer, .scrim, .bar, .chart-tip { transition: none; }
+}
 </style>
 </head>
 <body>
@@ -620,22 +750,14 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
 
     <!-- ═══════════ TAB 2: Usage ═══════════ -->
     <div id="tab-usage" class="tab-panel">
-        <div class="cards" id="usage-cards">
-            <div class="card">
-                <div class="card-label">Total Requests (Lifetime)</div>
-                <div class="card-value num" id="stat-requests">0</div>
-            </div>
-            <div class="card">
-                <div class="card-label">Prompt Tokens</div>
-                <div class="card-value num" id="stat-prompt">0</div>
-            </div>
-            <div class="card">
-                <div class="card-label">Completion Tokens</div>
-                <div class="card-value num" id="stat-completion">0</div>
-            </div>
-            <div class="card">
-                <div class="card-label">Total Tokens</div>
-                <div class="card-value num" id="stat-total">0</div>
+        <div class="usage-toolbar">
+            <span class="usage-updated" id="usage-updated"><span class="pulse"></span><span id="usage-updated-txt">updated just now</span></span>
+            <div class="usage-toolbar-right">
+                <select class="usage-select" id="usage-model-filter" title="Filter recent requests by model">
+                    <option value="all">All models</option>
+                </select>
+                <button class="copy-btn" id="usage-refresh">↻ Refresh</button>
+                <button class="copy-btn" id="usage-export">↓ Export CSV</button>
             </div>
         </div>
 
@@ -645,56 +767,119 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
             <button class="copy-btn" onclick="flushUsage()" id="flush-btn" style="margin-left:auto">Save Now</button>
         </div>
 
-        <div class="section-title">Daily History</div>
-        <div class="table-wrap" id="daily-wrap" style="display:none">
-            <table id="daily-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Requests</th>
-                        <th>Prompt Tokens</th>
-                        <th>Completion Tokens</th>
-                        <th>Total Tokens</th>
-                        <th>Errors</th>
-                    </tr>
-                </thead>
-                <tbody id="daily-body"></tbody>
-            </table>
+        <!-- KPI cards -->
+        <div class="kpis usage-hideable" id="usage-kpis"></div>
+
+        <!-- token + requests charts -->
+        <div class="charts-grid usage-hideable">
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-title">Token Usage<span class="hint">Input / output tokens per day (from daily snapshots)</span></div>
+                    <div class="legend">
+                        <span class="legend-item"><span class="swatch" style="background:var(--accent)"></span>Input</span>
+                        <span class="legend-item"><span class="swatch" style="background:#aab4ff"></span>Output</span>
+                    </div>
+                </div>
+                <svg class="chart" id="tokenChart" preserveAspectRatio="none"></svg>
+                <div class="axis-x" id="tokenAxis"></div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-title">Requests &amp; Errors<span class="hint">Requests per day, failures highlighted</span></div>
+                    <div class="legend">
+                        <span class="legend-item"><span class="swatch" style="background:rgba(232,234,243,0.3)"></span>Requests</span>
+                        <span class="legend-item"><span class="swatch" style="background:var(--red)"></span>Errors</span>
+                    </div>
+                </div>
+                <svg class="chart short" id="reqChart" preserveAspectRatio="none"></svg>
+                <div class="axis-x" id="reqAxis"></div>
+            </div>
         </div>
 
-        <div class="section-title">Per-Model Breakdown</div>
-        <div class="table-wrap">
-            <table id="model-usage-table">
-                <thead>
-                    <tr>
-                        <th>Model</th>
-                        <th>Requests</th>
-                        <th>Prompt Tokens</th>
-                        <th>Completion Tokens</th>
-                        <th>Avg Duration</th>
-                        <th>Errors</th>
-                    </tr>
-                </thead>
-                <tbody id="model-usage-body"></tbody>
-            </table>
+        <!-- latency -->
+        <div class="panel block usage-hideable">
+            <div class="panel-head">
+                <div class="panel-title">Response Latency<span class="hint">p50 / p95 computed from recent request durations, by day</span></div>
+                <div class="legend" id="latStat"></div>
+            </div>
+            <svg class="chart short" id="latChart" preserveAspectRatio="none"></svg>
+            <div class="axis-x" id="latAxis"></div>
         </div>
 
-        <div class="section-title">Recent Requests</div>
-        <div class="table-wrap">
-            <table id="recent-table">
-                <thead>
-                    <tr>
-                        <th style="width:30px"></th>
-                        <th>Model</th>
-                        <th>Prompt</th>
-                        <th>Completion</th>
-                        <th>Duration</th>
-                        <th>Time</th>
-                    </tr>
-                </thead>
-                <tbody id="recent-body"></tbody>
-            </table>
+        <!-- per-model -->
+        <div class="panel block usage-hideable">
+            <div class="panel-head">
+                <div class="panel-title">Per-Model Breakdown<span class="hint">Click any model to drill down</span></div>
+                <span class="kpi-sub" id="modelCount"></span>
+            </div>
+            <div class="u-table-wrap">
+                <table class="ds-table" id="model-usage-table">
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th class="r">Requests</th>
+                            <th class="r">Input tok</th>
+                            <th class="r">Output tok</th>
+                            <th class="r">Error rate</th>
+                            <th class="r">Avg latency</th>
+                            <th>Share</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="model-usage-body"></tbody>
+                </table>
+            </div>
         </div>
+
+        <!-- recent requests -->
+        <div class="panel block usage-hideable">
+            <div class="panel-head">
+                <div class="panel-title">Recent Requests<span class="hint">Click any request for full detail</span></div>
+            </div>
+            <div class="u-table-wrap">
+                <table class="ds-table" id="recent-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Model</th>
+                            <th>Status</th>
+                            <th class="r">Input</th>
+                            <th class="r">Output</th>
+                            <th class="r">Latency</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-body"></tbody>
+                </table>
+            </div>
+            <div class="table-foot">
+                <span id="recentMeta"></span>
+                <button class="link-btn" id="usage-more" style="display:none">Load more</button>
+            </div>
+        </div>
+
+        <!-- daily history -->
+        <div class="panel block usage-hideable" id="daily-wrap" style="display:none">
+            <div class="panel-head">
+                <div class="panel-title">Daily History<span class="hint">Persisted daily snapshots</span></div>
+            </div>
+            <div class="u-table-wrap">
+                <table class="ds-table" id="daily-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th class="r">Requests</th>
+                            <th class="r">Input tok</th>
+                            <th class="r">Output tok</th>
+                            <th class="r">Total tok</th>
+                            <th class="r">Errors</th>
+                        </tr>
+                    </thead>
+                    <tbody id="daily-body"></tbody>
+                </table>
+            </div>
+        </div>
+
         <div id="usage-empty" class="empty-state" style="display:none">
             No requests recorded yet. Send a chat completion to see usage.
         </div>
@@ -781,6 +966,22 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
         </div>
     </div>
 </div>
+
+<!-- ═══════════ Usage drill-down drawer ═══════════ -->
+<div class="scrim" id="usage-scrim"></div>
+<aside class="drawer" id="usage-drawer" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Usage detail">
+    <div class="drawer-head">
+        <div>
+            <div class="drawer-eyebrow" id="usage-drawer-eyebrow">Detail</div>
+            <div class="drawer-title" id="usage-drawer-title"></div>
+        </div>
+        <button class="x-btn" id="usage-drawer-close" aria-label="Close">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
+    </div>
+    <div class="drawer-body" id="usage-drawer-body"></div>
+</aside>
+<div class="chart-tip" id="usage-tip"></div>
 
 <script>
 /* ── Tab switching ──────────────────────────────────────────── */
@@ -1033,91 +1234,468 @@ loadAuthConfigUI();
 /* ── Tab 2: Usage ───────────────────────────────────────────── */
 let usageTimer = null;
 
+/* Palette + colors (hex so they work in both CSS props and SVG attributes) */
+const USAGE_COLORS = ['#7c8cff', '#c084fc', '#34d399', '#60a5fa', '#fb923c', '#fbbf24', '#f87171', '#2dd4bf', '#a78bfa', '#f472b6'];
+const U_ACCENT = '#7c8cff', U_OUTPUT = '#aab4ff', U_GREEN = '#34d399', U_RED = '#f87171', U_YELLOW = '#fbbf24', U_DIM = '#8b90a8';
+const usageState = { data: null, colorMap: {}, recentShown: 12, filter: 'all' };
+
+/* ── formatting ── */
+function uFmtNum(n) {
+    n = Number(n) || 0;
+    if (n >= 1e9) return (n / 1e9).toFixed(n >= 1e10 ? 0 : 1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'K';
+    return String(Math.round(n));
+}
+function uFmtMs(ms) { ms = Number(ms) || 0; return ms >= 1000 ? (ms / 1000).toFixed(ms >= 10000 ? 1 : 2) + 's' : Math.round(ms) + 'ms'; }
+function uFmtPct(x) { x = Number(x) || 0; return (x * 100).toFixed(x * 100 >= 10 ? 1 : 2) + '%'; }
+function uLatColor(ms) { return ms > 6000 ? U_RED : ms > 2500 ? U_YELLOW : U_GREEN; }
+function uErrColor(r) { return r > 0.03 ? U_RED : r > 0.01 ? U_YELLOW : U_GREEN; }
+function uColor(model) { return usageState.colorMap[model] || U_ACCENT; }
+function uQuantile(sorted, q) {
+    if (!sorted.length) return 0;
+    const pos = (sorted.length - 1) * q, b = Math.floor(pos), rest = pos - b;
+    return sorted[b + 1] !== undefined ? Math.round(sorted[b] + rest * (sorted[b + 1] - sorted[b])) : sorted[b];
+}
+function uShortDate(s) { const p = String(s).split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) : String(s); }
+function uDayKey(ts) { const d = new Date(ts); const z = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); }
+
+/* ── SVG helpers ── */
+const U_NS = 'http://www.w3.org/2000/svg';
+function uEl(tag, attrs) { const e = document.createElementNS(U_NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+function uClear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+const U_VW = 600;
+function uSize(svg) { const r = svg.getBoundingClientRect(); return { w: U_VW, h: Math.max(120, r.height || 190) }; }
+function uGrid(svg, w, h, pad) {
+    for (let i = 0; i <= 4; i++) { const y = pad.t + (h - pad.t - pad.b) * i / 4; svg.appendChild(uEl('line', { x1: pad.l, y1: y, x2: w - pad.r, y2: y, class: 'grid-line' })); }
+}
+function uEmptyChart(svg, msg) {
+    const { w, h } = uSize(svg); svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); uClear(svg);
+    const t = uEl('text', { x: w / 2, y: h / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle', class: 'chart-note' });
+    t.textContent = msg; svg.appendChild(t);
+}
+
+/* ── tooltip ── */
+function uTip() { return document.getElementById('usage-tip'); }
+function uShowTip(ev, html) { const t = uTip(); t.innerHTML = html; t.classList.add('show'); uPosTip(ev); }
+function uPosTip(ev) { const t = uTip(); const x = ev.clientX + 14, y = ev.clientY + 14; t.style.left = Math.min(x, window.innerWidth - t.offsetWidth - 12) + 'px'; t.style.top = Math.min(y, window.innerHeight - t.offsetHeight - 12) + 'px'; }
+function uHideTip() { uTip().classList.remove('show'); }
+
+/* ── charts ── */
+function uBarSlot(i, bw, gap, innerH) {
+    let x = i * bw + gap / 2, cw = Math.max(1, bw - gap);
+    const maxBar = 72; if (cw > maxBar) { x += (cw - maxBar) / 2; cw = maxBar; }
+    return { x, cw };
+}
+function uRenderStacked(svg, axisEl, buckets) {
+    if (!buckets.length) { uEmptyChart(svg, 'No daily data yet'); uClear(axisEl); return; }
+    const { w, h } = uSize(svg); svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); uClear(svg);
+    const pad = { t: 10, r: 6, b: 6, l: 6 }; uGrid(svg, w, h, pad);
+    const max = Math.max(1, ...buckets.map(b => b.input + b.output));
+    const innerW = w - pad.l - pad.r, innerH = h - pad.t - pad.b, bw = innerW / buckets.length, gap = Math.min(8, bw * 0.3);
+    buckets.forEach((b, i) => {
+        const s = uBarSlot(i, bw, gap, innerH); const x = pad.l + s.x, cw = s.cw;
+        const inH = (b.input / max) * innerH, outH = (b.output / max) * innerH;
+        const rOut = uEl('rect', { x, y: pad.t + innerH - inH - outH, width: cw, height: Math.max(0.5, outH), class: 'bar bar-out', rx: 1 });
+        const rIn = uEl('rect', { x, y: pad.t + innerH - inH, width: cw, height: Math.max(0.5, inH), class: 'bar bar-in', rx: 1 });
+        [rOut, rIn].forEach(r => {
+            r.addEventListener('mousemove', ev => uShowTip(ev, '<b>' + b.label + '</b><br><span class="tk">in</span> ' + uFmtNum(b.input) + ' · <span class="tk">out</span> ' + uFmtNum(b.output) + '<br>req ' + b.requests + ' · err ' + b.errors));
+            r.addEventListener('mouseleave', uHideTip);
+        });
+        svg.appendChild(rOut); svg.appendChild(rIn);
+    });
+    uRenderAxis(axisEl, buckets);
+}
+function uRenderReqBars(svg, axisEl, buckets) {
+    if (!buckets.length) { uEmptyChart(svg, 'No daily data yet'); uClear(axisEl); return; }
+    const { w, h } = uSize(svg); svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); uClear(svg);
+    const pad = { t: 10, r: 6, b: 6, l: 6 }; uGrid(svg, w, h, pad);
+    const max = Math.max(1, ...buckets.map(b => b.requests));
+    const innerW = w - pad.l - pad.r, innerH = h - pad.t - pad.b, bw = innerW / buckets.length, gap = Math.min(8, bw * 0.3);
+    buckets.forEach((b, i) => {
+        const s = uBarSlot(i, bw, gap, innerH); const x = pad.l + s.x, cw = s.cw;
+        const rH = (b.requests / max) * innerH, eH = (b.errors / max) * innerH;
+        const rr = uEl('rect', { x, y: pad.t + innerH - rH, width: cw, height: Math.max(0.5, rH), class: 'bar bar-req', rx: 1 });
+        svg.appendChild(rr);
+        if (b.errors > 0) { svg.appendChild(uEl('rect', { x, y: pad.t + innerH - eH, width: cw, height: Math.max(0.8, eH), class: 'bar bar-err', rx: 1 })); }
+        rr.addEventListener('mousemove', ev => uShowTip(ev, '<b>' + b.label + '</b><br>req ' + b.requests + ' · <span style="color:' + U_RED + '">err ' + b.errors + '</span>'));
+        rr.addEventListener('mouseleave', uHideTip);
+    });
+    uRenderAxis(axisEl, buckets);
+}
+function uRenderLatency(svg, axisEl, buckets) {
+    if (!buckets.length) { uEmptyChart(svg, 'No recent request data'); uClear(axisEl); return; }
+    const { w, h } = uSize(svg); svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); uClear(svg);
+    const pad = { t: 12, r: 8, b: 8, l: 8 }; uGrid(svg, w, h, pad);
+    const max = Math.max(1, ...buckets.map(b => b.p95)) * 1.12;
+    const innerW = w - pad.l - pad.r, innerH = h - pad.t - pad.b;
+    const X = i => pad.l + (buckets.length <= 1 ? innerW / 2 : innerW * i / (buckets.length - 1));
+    const Y = v => pad.t + innerH - (v / max) * innerH;
+    const p95pts = buckets.map((b, i) => [X(i), Y(b.p95)]);
+    const p50pts = buckets.map((b, i) => [X(i), Y(b.p50)]);
+    let area = 'M ' + p95pts[0][0] + ' ' + (pad.t + innerH) + ' ';
+    p95pts.forEach(p => area += 'L ' + p[0] + ' ' + p[1] + ' ');
+    area += 'L ' + p95pts[p95pts.length - 1][0] + ' ' + (pad.t + innerH) + ' Z';
+    svg.appendChild(uEl('path', { d: area, class: 'area-lat' }));
+    const line = pts => 'M ' + pts.map(p => p[0] + ' ' + p[1]).join(' L ');
+    svg.appendChild(uEl('path', { d: line(p50pts), class: 'line-p50' }));
+    svg.appendChild(uEl('path', { d: line(p95pts), class: 'line-p95' }));
+    buckets.forEach((b, i) => {
+        svg.appendChild(uEl('circle', { cx: X(i), cy: Y(b.p95), r: 3.2, class: 'lat-dot' }));
+        const hit = uEl('rect', { x: X(i) - innerW / (buckets.length * 2), y: pad.t, width: innerW / buckets.length, height: innerH, fill: 'transparent' });
+        hit.addEventListener('mousemove', ev => uShowTip(ev, '<b>' + b.label + '</b><br>p50 ' + uFmtMs(b.p50) + ' · <span class="tk">p95 ' + uFmtMs(b.p95) + '</span>'));
+        hit.addEventListener('mouseleave', uHideTip);
+        svg.appendChild(hit);
+    });
+    uRenderAxis(axisEl, buckets);
+}
+function uRenderAxis(axisEl, buckets) {
+    uClear(axisEl);
+    const n = buckets.length, step = Math.max(1, Math.ceil(n / 6));
+    buckets.forEach((b, i) => { if (i % step === 0 || i === n - 1) { const s = document.createElement('span'); s.textContent = b.label; axisEl.appendChild(s); } });
+}
+function uSparkline(values, color) {
+    const w = 120, h = 30, pad = 3;
+    if (!values || !values.length) return '<svg class="kpi-spark" viewBox="0 0 ' + w + ' ' + h + '"></svg>';
+    if (values.length === 1) values = [values[0], values[0]];
+    const max = Math.max(...values), min = Math.min(...values), rng = (max - min) || 1;
+    const pts = values.map((v, i) => [pad + (w - 2 * pad) * i / (values.length - 1), h - pad - (v - min) / rng * (h - 2 * pad)]);
+    const line = 'M ' + pts.map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ');
+    const area = 'M ' + pts[0][0].toFixed(1) + ' ' + h + ' ' + pts.map(p => 'L ' + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ') + ' L ' + pts[pts.length - 1][0].toFixed(1) + ' ' + h + ' Z';
+    return '<svg class="kpi-spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none"><path d="' + area + '" fill="' + color + '" fill-opacity="0.14"/><path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+}
+
+/* ── transform real /api/usage into the view model ── */
+function uTransform(d) {
+    const models = (d.byModel || []).map(m => ({
+        model: m.model, requests: m.requests, input: m.promptTokens, output: m.completionTokens,
+        total: m.totalTokens, errors: m.errors, errRate: m.requests ? m.errors / m.requests : 0,
+        avgLat: m.avgDuration || 0
+    })).sort((a, b) => b.total - a.total);
+
+    const recent = (d.recentRequests || []).map(r => ({
+        id: r.id, ts: r.timestamp, model: r.model, input: r.promptTokens, output: r.completionTokens,
+        total: r.totalTokens, status: r.status, duration: r.duration, stream: !!r.stream
+    }));
+
+    const daily = (d.dailySnapshots || []).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+    const tokenBuckets = daily.map(s => ({ label: uShortDate(s.date), date: s.date, input: s.promptTokens, output: s.completionTokens, requests: s.requests, errors: s.errors }));
+
+    // latency p50/p95 per day, computed honestly from recent request durations
+    const byDay = {};
+    recent.forEach(r => { const k = uDayKey(r.ts); (byDay[k] = byDay[k] || []).push(r.duration); });
+    const latBuckets = Object.keys(byDay).sort().map(k => {
+        const s = byDay[k].slice().sort((a, b) => a - b);
+        return { label: uShortDate(k), p50: uQuantile(s, 0.5), p95: uQuantile(s, 0.95) };
+    });
+
+    const allLat = recent.map(r => r.duration).slice().sort((a, b) => a - b);
+    const kpiLat = { p50: uQuantile(allLat, 0.5), p95: uQuantile(allLat, 0.95), avg: allLat.length ? Math.round(allLat.reduce((s, x) => s + x, 0) / allLat.length) : 0 };
+
+    // deltas vs the previous daily snapshot (only when ≥2 days exist)
+    const last = daily[daily.length - 1], prev = daily[daily.length - 2];
+    const ratio = (cur, prv) => (!prev || !prv) ? null : (cur - prv) / prv;
+    const deltas = prev ? {
+        requests: ratio(last.requests, prev.requests),
+        input: ratio(last.promptTokens, prev.promptTokens),
+        output: ratio(last.completionTokens, prev.completionTokens),
+        errRate: (last.requests ? last.errors / last.requests : 0) - (prev.requests ? prev.errors / prev.requests : 0)
+    } : { requests: null, input: null, output: null, errRate: null };
+
+    return {
+        raw: d, models, recent, daily, tokenBuckets, latBuckets, kpiLat, deltas,
+        totals: {
+            requests: d.totalRequests || 0, input: d.totalPromptTokens || 0, output: d.totalCompletionTokens || 0,
+            total: d.totalTokens || 0, errors: d.totalErrors || 0, errRate: d.totalRequests ? (d.totalErrors || 0) / d.totalRequests : 0
+        }
+    };
+}
+
+/* ── KPI cards ── */
+function uDeltaHTML(d, invert) {
+    if (d === null || d === undefined) return '';
+    const pos = invert ? d < 0 : d > 0;
+    const cls = Math.abs(d) < 0.005 ? 'flat' : pos ? 'up' : 'down';
+    const arrow = Math.abs(d) < 0.005 ? '→' : d > 0 ? '▲' : '▼';
+    return '<span class="delta ' + cls + '">' + arrow + ' ' + uFmtPct(Math.abs(d)) + '</span>';
+}
+function uRenderKPIs(t) {
+    const sReq = t.tokenBuckets.map(b => b.requests);
+    const sIn = t.tokenBuckets.map(b => b.input);
+    const sOut = t.tokenBuckets.map(b => b.output);
+    const sErr = t.tokenBuckets.map(b => b.errors + 0.001);
+    const sLat = t.recent.slice().reverse().map(r => r.duration);
+    const k = t.totals;
+    const cards = [
+        { label: 'Total Requests', value: uFmtNum(k.requests), sub: 'lifetime', delta: uDeltaHTML(t.deltas.requests), spark: uSparkline(sReq, U_ACCENT) },
+        { label: 'Input Tokens', value: uFmtNum(k.input), sub: 'prompt', delta: uDeltaHTML(t.deltas.input), spark: uSparkline(sIn, U_ACCENT) },
+        { label: 'Output Tokens', value: uFmtNum(k.output), sub: 'completion', delta: uDeltaHTML(t.deltas.output), spark: uSparkline(sOut, U_OUTPUT) },
+        { label: 'Error Rate', value: uFmtPct(k.errRate), sub: k.errors + ' failed', delta: uDeltaHTML(t.deltas.errRate, true), spark: uSparkline(sErr, uErrColor(k.errRate)), color: uErrColor(k.errRate), action: 'errors' },
+        { label: 'Avg Latency', value: uFmtMs(t.kpiLat.avg), sub: 'p95 ' + uFmtMs(t.kpiLat.p95), delta: '', spark: uSparkline(sLat, uLatColor(t.kpiLat.p95)), color: uLatColor(t.kpiLat.p95), action: 'latency' }
+    ];
+    const host = document.getElementById('usage-kpis');
+    host.innerHTML = cards.map(c =>
+        '<div class="kpi' + (c.action ? ' clickable' : '') + '" ' + (c.action ? 'data-action="' + c.action + '" tabindex="0" role="button"' : '') + '>' +
+        '<div class="kpi-label">' + c.label + '</div>' +
+        '<div class="kpi-value"' + (c.color ? ' style="color:' + c.color + '"' : '') + '>' + c.value + '</div>' +
+        c.spark +
+        '<div class="kpi-foot"><span class="kpi-sub">' + c.sub + '</span>' + c.delta + '</div>' +
+        '</div>').join('');
+    host.querySelectorAll('[data-action]').forEach(card => {
+        const act = card.getAttribute('data-action');
+        const open = () => act === 'errors' ? uOpenErrorDrawer() : uOpenLatencyDrawer();
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
+}
+function uRenderLatStat(t) {
+    document.getElementById('latStat').innerHTML =
+        '<span class="legend-item"><span class="swatch" style="background:rgba(232,234,243,0.45)"></span>p50 ' + uFmtMs(t.kpiLat.p50) + '</span>' +
+        '<span class="legend-item"><span class="swatch" style="background:' + U_ACCENT + '"></span>p95 ' + uFmtMs(t.kpiLat.p95) + '</span>';
+}
+
+/* ── tables ── */
+function uRenderModelTable(t) {
+    const tb = document.getElementById('model-usage-body');
+    const totalTok = Math.max(1, t.models.reduce((s, m) => s + m.total, 0));
+    tb.innerHTML = t.models.map(m => {
+        const pct = m.total / totalTok, col = uColor(m.model);
+        return '<tr class="clickable" data-model="' + esc(m.model) + '">' +
+            '<td><span class="model-chip"><span class="mk" style="background:' + col + '"></span>' + esc(m.model) + '</span></td>' +
+            '<td class="r">' + uFmtNum(m.requests) + '</td>' +
+            '<td class="r">' + uFmtNum(m.input) + '</td>' +
+            '<td class="r">' + uFmtNum(m.output) + '</td>' +
+            '<td class="r" style="color:' + uErrColor(m.errRate) + '">' + uFmtPct(m.errRate) + '</td>' +
+            '<td class="r">' + uFmtMs(m.avgLat) + '</td>' +
+            '<td><div class="share"><span class="share-bar"><i style="width:' + (pct * 100).toFixed(0) + '%;background:' + col + '"></i></span><span class="pct">' + (pct * 100).toFixed(0) + '%</span></div></td>' +
+            '<td class="chev">›</td>' +
+            '</tr>';
+    }).join('');
+    tb.querySelectorAll('tr').forEach(tr => tr.addEventListener('click', () => uOpenModelDrawer(tr.getAttribute('data-model'))));
+    document.getElementById('modelCount').textContent = t.models.length + ' models · ' + uFmtNum(t.totals.total) + ' tokens';
+}
+function uStatusPill(s) {
+    if (s < 400) return '<span class="pill pill-ok">' + s + '</span>';
+    if (s === 429) return '<span class="pill pill-warn">' + s + '</span>';
+    return '<span class="pill pill-err">' + s + '</span>';
+}
+function uLatCell(ms) { const max = 90000; return '<span class="lat-cell"><span class="lat-bar"><i style="width:' + Math.min(100, ms / max * 100).toFixed(0) + '%;background:' + uLatColor(ms) + '"></i></span><span class="num">' + uFmtMs(ms) + '</span></span>'; }
+function uRenderRecent(t) {
+    const tb = document.getElementById('recent-body');
+    const filtered = usageState.filter === 'all' ? t.recent : t.recent.filter(r => r.model === usageState.filter);
+    const rows = filtered.slice(0, usageState.recentShown);
+    tb.innerHTML = rows.map(r =>
+        '<tr class="clickable" data-id="' + r.id + '">' +
+        '<td class="num" style="color:var(--text-dim)">' + timeAgo(r.ts) + '</td>' +
+        '<td><span class="model-chip"><span class="mk" style="background:' + uColor(r.model) + '"></span>' + esc(r.model) + '</span></td>' +
+        '<td>' + uStatusPill(r.status) + '</td>' +
+        '<td class="r">' + uFmtNum(r.input) + '</td>' +
+        '<td class="r">' + uFmtNum(r.output) + '</td>' +
+        '<td class="r">' + uLatCell(r.duration) + '</td>' +
+        '<td class="chev">›</td>' +
+        '</tr>').join('') || '<tr><td colspan="7" style="color:var(--text-muted)">No requests for this filter.</td></tr>';
+    tb.querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', () => uOpenRequestDrawer(+tr.getAttribute('data-id'))));
+    document.getElementById('recentMeta').textContent = 'showing ' + rows.length + ' / ' + filtered.length;
+    document.getElementById('usage-more').style.display = usageState.recentShown >= filtered.length ? 'none' : 'inline-block';
+}
+function uRenderDaily(t) {
+    const wrap = document.getElementById('daily-wrap');
+    if (!t.daily.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    const body = document.getElementById('daily-body');
+    body.innerHTML = t.daily.slice().reverse().map(s =>
+        '<tr>' +
+        '<td>' + esc(s.date) + '</td>' +
+        '<td class="r">' + uFmtNum(s.requests) + '</td>' +
+        '<td class="r">' + uFmtNum(s.promptTokens) + '</td>' +
+        '<td class="r">' + uFmtNum(s.completionTokens) + '</td>' +
+        '<td class="r">' + uFmtNum(s.totalTokens) + '</td>' +
+        '<td class="r" style="color:' + (s.errors > 0 ? U_RED : 'var(--text-dim)') + '">' + s.errors + '</td>' +
+        '</tr>').join('');
+}
+
+/* ── drawer (drill-down) ── */
+function uOpenDrawer(eyebrow, title, bodyHTML) {
+    document.getElementById('usage-drawer-eyebrow').textContent = eyebrow;
+    document.getElementById('usage-drawer-title').textContent = title;
+    document.getElementById('usage-drawer-body').innerHTML = bodyHTML;
+    document.getElementById('usage-scrim').classList.add('open');
+    const dr = document.getElementById('usage-drawer');
+    dr.classList.add('open'); dr.setAttribute('aria-hidden', 'false');
+}
+function uCloseDrawer() {
+    document.getElementById('usage-scrim').classList.remove('open');
+    const dr = document.getElementById('usage-drawer');
+    dr.classList.remove('open'); dr.setAttribute('aria-hidden', 'true');
+}
+function uMini(l, v, color) { return '<div class="mini-kpi"><div class="l">' + l + '</div><div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div></div>'; }
+function uOpenModelDrawer(model) {
+    const t = usageState.data; if (!t) return;
+    const m = t.models.find(x => x.model === model); if (!m) return;
+    const reqs = t.recent.filter(r => r.model === model);
+    const inPct = m.total ? (m.input / m.total * 100) : 0, col = uColor(model);
+    const body =
+        '<div class="mini-kpis">' +
+        uMini('Requests', uFmtNum(m.requests)) +
+        uMini('Error rate', uFmtPct(m.errRate), uErrColor(m.errRate)) +
+        uMini('Avg latency', uFmtMs(m.avgLat), uLatColor(m.avgLat)) +
+        uMini('Total tokens', uFmtNum(m.total)) +
+        '</div>' +
+        '<div><div class="drawer-sub" style="margin-bottom:8px">Token split · ' + uFmtNum(m.total) + ' total</div>' +
+        '<div class="bar-split"><i style="width:' + inPct + '%;background:' + U_ACCENT + '"></i><i style="width:' + (100 - inPct) + '%;background:' + U_OUTPUT + '"></i></div>' +
+        '<div class="kpi-foot" style="margin-top:8px"><span class="kpi-sub"><span class="dot-pin" style="background:' + U_ACCENT + '"></span>Input ' + uFmtNum(m.input) + '</span><span class="kpi-sub"><span class="dot-pin" style="background:' + U_OUTPUT + '"></span>Output ' + uFmtNum(m.output) + '</span></div></div>' +
+        '<div><div class="drawer-sub" style="margin-bottom:8px">Recent requests · ' + reqs.length + '</div><div class="detail-list">' +
+        (reqs.slice(0, 8).map(r => '<div class="detail-row"><span class="k">' + timeAgo(r.ts) + ' · ' + uStatusPill(r.status) + '</span><span class="v">' + uFmtNum(r.input) + '/' + uFmtNum(r.output) + ' · ' + uFmtMs(r.duration) + '</span></div>').join('') || '<div class="kpi-sub">No recent requests retained.</div>') +
+        '</div></div>';
+    uOpenDrawer('Model detail', model, body);
+}
+function uOpenRequestDrawer(id) {
+    const t = usageState.data; if (!t) return;
+    const r = t.recent.find(x => x.id === id); if (!r) return;
+    const body =
+        '<div class="mini-kpis">' +
+        uMini('Status', r.status, r.status >= 400 ? U_RED : U_GREEN) +
+        uMini('Latency', uFmtMs(r.duration), uLatColor(r.duration)) +
+        uMini('Input tokens', uFmtNum(r.input)) +
+        uMini('Output tokens', uFmtNum(r.output)) +
+        '</div>' +
+        '<div class="detail-list">' +
+        '<div class="detail-row"><span class="k">Request ID</span><span class="v">#' + r.id + '</span></div>' +
+        '<div class="detail-row"><span class="k">Model</span><span class="v">' + esc(r.model) + '</span></div>' +
+        '<div class="detail-row"><span class="k">Timestamp</span><span class="v">' + new Date(r.ts).toLocaleString() + '</span></div>' +
+        '<div class="detail-row"><span class="k">HTTP status</span><span class="v">' + r.status + ' ' + (r.status < 400 ? 'OK' : r.status === 429 ? 'Rate limited' : 'Error') + '</span></div>' +
+        '<div class="detail-row"><span class="k">Input tokens</span><span class="v">' + (r.input || 0).toLocaleString() + '</span></div>' +
+        '<div class="detail-row"><span class="k">Output tokens</span><span class="v">' + (r.output || 0).toLocaleString() + '</span></div>' +
+        '<div class="detail-row"><span class="k">Total tokens</span><span class="v">' + ((r.total != null ? r.total : (r.input + r.output)) || 0).toLocaleString() + '</span></div>' +
+        '<div class="detail-row"><span class="k">End-to-end latency</span><span class="v">' + (r.duration || 0).toLocaleString() + ' ms</span></div>' +
+        '<div class="detail-row"><span class="k">Streaming</span><span class="v">' + (r.stream ? 'Yes (SSE)' : 'No') + '</span></div>' +
+        '</div>';
+    uOpenDrawer('Request detail', '#' + r.id, body);
+}
+function uOpenErrorDrawer() {
+    const t = usageState.data; if (!t) return;
+    const errs = t.recent.filter(r => r.status >= 400);
+    const byModel = {}; errs.forEach(r => { byModel[r.model] = (byModel[r.model] || 0) + 1; });
+    const by429 = errs.filter(r => r.status === 429).length, by5xx = errs.filter(r => r.status >= 500).length;
+    const body =
+        '<div class="mini-kpis">' +
+        uMini('Total errors', t.totals.errors, uErrColor(t.totals.errRate)) +
+        uMini('Error rate', uFmtPct(t.totals.errRate), uErrColor(t.totals.errRate)) +
+        uMini('429 throttled', by429, U_YELLOW) +
+        uMini('5xx errors', by5xx, U_RED) +
+        '</div>' +
+        '<div><div class="drawer-sub" style="margin-bottom:8px">By model (recent)</div><div class="detail-list">' +
+        (Object.entries(byModel).sort((a, b) => b[1] - a[1]).map(([k, v]) => '<div class="detail-row"><span class="k"><span class="dot-pin" style="background:' + uColor(k) + '"></span>' + esc(k) + '</span><span class="v">' + v + '</span></div>').join('') || '<div class="kpi-sub">No errors in retained requests 🎉</div>') +
+        '</div></div>' +
+        '<div><div class="drawer-sub" style="margin-bottom:8px">Recent failed requests</div><div class="detail-list">' +
+        (errs.slice(0, 8).map(r => '<div class="detail-row"><span class="k">' + timeAgo(r.ts) + ' · ' + esc(r.model) + '</span><span class="v">' + uStatusPill(r.status) + ' ' + uFmtMs(r.duration) + '</span></div>').join('') || '<div class="kpi-sub">None</div>') +
+        '</div></div>';
+    uOpenDrawer('Error detail', 'Failed requests', body);
+}
+function uOpenLatencyDrawer() {
+    const t = usageState.data; if (!t) return;
+    const slow = t.recent.slice().sort((a, b) => b.duration - a.duration);
+    const body =
+        '<div class="mini-kpis">' +
+        uMini('p50', uFmtMs(t.kpiLat.p50)) +
+        uMini('Average', uFmtMs(t.kpiLat.avg), uLatColor(t.kpiLat.avg)) +
+        uMini('p95', uFmtMs(t.kpiLat.p95), uLatColor(t.kpiLat.p95)) +
+        uMini('Slowest', uFmtMs(slow[0] ? slow[0].duration : 0), uLatColor(slow[0] ? slow[0].duration : 0)) +
+        '</div>' +
+        '<div><div class="drawer-sub" style="margin-bottom:8px">Average latency by model</div><div class="detail-list">' +
+        (t.models.slice().sort((a, b) => b.avgLat - a.avgLat).map(m => '<div class="detail-row"><span class="k"><span class="dot-pin" style="background:' + uColor(m.model) + '"></span>' + esc(m.model) + '</span><span class="v" style="color:' + uLatColor(m.avgLat) + '">' + uFmtMs(m.avgLat) + '</span></div>').join('') || '<div class="kpi-sub">No model data.</div>') +
+        '</div></div>' +
+        '<div><div class="drawer-sub" style="margin-bottom:8px">Slowest requests · top 6</div><div class="detail-list">' +
+        (slow.slice(0, 6).map(r => '<div class="detail-row"><span class="k">' + esc(r.model) + ' · ' + uStatusPill(r.status) + '</span><span class="v" style="color:' + uLatColor(r.duration) + '">' + uFmtMs(r.duration) + '</span></div>').join('') || '<div class="kpi-sub">No recent requests.</div>') +
+        '</div></div>';
+    uOpenDrawer('Latency detail', 'Response time', body);
+}
+
+/* ── filter / export / render orchestration ── */
+function uSyncFilterOptions(models) {
+    const sel = document.getElementById('usage-model-filter');
+    const cur = sel.value || 'all';
+    const opts = ['<option value="all">All models</option>'].concat(models.map(m => '<option value="' + esc(m.model) + '">' + esc(m.model) + '</option>'));
+    sel.innerHTML = opts.join('');
+    if (models.some(m => m.model === cur) || cur === 'all') sel.value = cur;
+    else { sel.value = 'all'; usageState.filter = 'all'; }
+}
+function uExportCSV() {
+    const t = usageState.data; if (!t) return;
+    let csv = 'model,requests,input_tokens,output_tokens,total_tokens,error_rate,avg_latency_ms\n';
+    t.models.forEach(m => { csv += [m.model, m.requests, m.input, m.output, m.total, m.errRate.toFixed(4), m.avgLat].join(',') + '\n'; });
+    const blob = new Blob([csv], { type: 'text/csv' }), url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'usage-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click(); URL.revokeObjectURL(url);
+}
+function uRenderAll() {
+    const t = usageState.data; if (!t) return;
+    uRenderKPIs(t);
+    uRenderStacked(document.getElementById('tokenChart'), document.getElementById('tokenAxis'), t.tokenBuckets);
+    uRenderReqBars(document.getElementById('reqChart'), document.getElementById('reqAxis'), t.tokenBuckets);
+    uRenderLatency(document.getElementById('latChart'), document.getElementById('latAxis'), t.latBuckets);
+    uRenderLatStat(t);
+    uRenderModelTable(t);
+    uRenderRecent(t);
+    uRenderDaily(t);
+}
+
 async function fetchUsage() {
     try {
         const res = await fetch('/api/usage');
         if (!res.ok) return;
         const d = await res.json();
 
-        document.getElementById('stat-requests').textContent = fmtNum(d.totalRequests);
-        document.getElementById('stat-prompt').textContent = fmtNum(d.totalPromptTokens);
-        document.getElementById('stat-completion').textContent = fmtNum(d.totalCompletionTokens);
-        document.getElementById('stat-total').textContent = fmtNum(d.totalTokens);
-
-        // Persistence bar
         if (d.persistence) {
             const bar = document.getElementById('persistence-bar');
             bar.style.display = 'flex';
             const saved = d.persistence.lastSavedAt ? timeAgo(d.persistence.lastSavedAt) : 'never';
             const since = d.persistence.createdAt ? new Date(d.persistence.createdAt).toLocaleDateString() : '—';
             document.getElementById('persist-info').textContent =
-                'Saved ' + saved + '  ·  Tracking since ' + since + '  ·  ' + d.persistence.file;
+                'Saved ' + saved + '  ·  Tracking since ' + since + '  ·  ' + (d.persistence.file || '');
         }
+        const upTxt = document.getElementById('usage-updated-txt');
+        if (upTxt) upTxt.textContent = (d.persistence && d.persistence.lastSavedAt) ? ('updated ' + timeAgo(d.persistence.lastSavedAt)) : 'updated just now';
+
+        const t = uTransform(d);
+        usageState.data = t;
+        usageState.colorMap = {};
+        t.models.forEach((m, i) => { usageState.colorMap[m.model] = USAGE_COLORS[i % USAGE_COLORS.length]; });
+        t.recent.forEach(r => { if (!usageState.colorMap[r.model]) { const idx = Object.keys(usageState.colorMap).length; usageState.colorMap[r.model] = USAGE_COLORS[idx % USAGE_COLORS.length]; } });
+        uSyncFilterOptions(t.models);
 
         const empty = document.getElementById('usage-empty');
-        if (d.totalRequests === 0) {
-            empty.style.display = '';
-            document.getElementById('model-usage-table').parentElement.style.display = 'none';
-            document.getElementById('recent-table').parentElement.style.display = 'none';
-            document.getElementById('daily-wrap').style.display = 'none';
-            return;
-        }
+        const hasData = t.totals.requests > 0;
+        document.querySelectorAll('#tab-usage .usage-hideable').forEach(elx => { if (elx.id !== 'daily-wrap') elx.style.display = hasData ? '' : 'none'; });
+        if (!hasData) { empty.style.display = ''; document.getElementById('daily-wrap').style.display = 'none'; return; }
         empty.style.display = 'none';
-        document.getElementById('model-usage-table').parentElement.style.display = '';
-        document.getElementById('recent-table').parentElement.style.display = '';
-
-        // Daily snapshots
-        if (d.dailySnapshots && d.dailySnapshots.length > 0) {
-            document.getElementById('daily-wrap').style.display = '';
-            const dBody = document.getElementById('daily-body');
-            dBody.innerHTML = '';
-            d.dailySnapshots.slice().reverse().forEach(s => {
-                const tr = document.createElement('tr');
-                tr.innerHTML =
-                    '<td>' + esc(s.date) + '</td>' +
-                    '<td class="num">' + fmtNum(s.requests) + '</td>' +
-                    '<td class="num">' + fmtNum(s.promptTokens) + '</td>' +
-                    '<td class="num">' + fmtNum(s.completionTokens) + '</td>' +
-                    '<td class="num">' + fmtNum(s.totalTokens) + '</td>' +
-                    '<td class="num" style="color:' + (s.errors > 0 ? 'var(--red)' : 'var(--text-dim)') + '">' + s.errors + '</td>';
-                dBody.appendChild(tr);
-            });
-        } else {
-            document.getElementById('daily-wrap').style.display = 'none';
-        }
-
-        // Per-model
-        const mBody = document.getElementById('model-usage-body');
-        mBody.innerHTML = '';
-        (d.byModel || []).sort((a, b) => b.requests - a.requests).forEach(m => {
-            const tr = document.createElement('tr');
-            tr.innerHTML =
-                '<td><span class="model-badge">' + esc(m.model) + '</span></td>' +
-                '<td class="num">' + fmtNum(m.requests) + '</td>' +
-                '<td class="num">' + fmtNum(m.promptTokens) + '</td>' +
-                '<td class="num">' + fmtNum(m.completionTokens) + '</td>' +
-                '<td class="num">' + m.avgDuration + 'ms</td>' +
-                '<td class="num" style="color:' + (m.errors > 0 ? 'var(--red)' : 'var(--text-dim)') + '">' + m.errors + '</td>';
-            mBody.appendChild(tr);
-        });
-
-        // Recent requests
-        const rBody = document.getElementById('recent-body');
-        rBody.innerHTML = '';
-        (d.recentRequests || []).forEach(r => {
-            const ok = r.status < 400;
-            const tr = document.createElement('tr');
-            tr.innerHTML =
-                '<td><span class="status-dot ' + (ok ? 'ok' : 'err') + '"></span></td>' +
-                '<td><span class="model-badge">' + esc(r.model) + '</span></td>' +
-                '<td class="num">' + fmtNum(r.promptTokens) + '</td>' +
-                '<td class="num">' + fmtNum(r.completionTokens) + '</td>' +
-                '<td class="num">' + r.duration + 'ms</td>' +
-                '<td style="color:var(--text-dim)">' + timeAgo(r.timestamp) + '</td>';
-            rBody.appendChild(tr);
-        });
+        uRenderAll();
     } catch (e) { /* silent */ }
 }
+
+/* one-time wiring for the Usage tab */
+(function uInitUsage() {
+    const sel = document.getElementById('usage-model-filter');
+    if (sel) sel.addEventListener('change', () => { usageState.filter = sel.value; usageState.recentShown = 12; if (usageState.data) uRenderRecent(usageState.data); });
+    const refresh = document.getElementById('usage-refresh');
+    if (refresh) refresh.addEventListener('click', () => fetchUsage());
+    const exp = document.getElementById('usage-export');
+    if (exp) exp.addEventListener('click', uExportCSV);
+    const more = document.getElementById('usage-more');
+    if (more) more.addEventListener('click', () => { usageState.recentShown += 12; if (usageState.data) uRenderRecent(usageState.data); });
+    const close = document.getElementById('usage-drawer-close');
+    if (close) close.addEventListener('click', uCloseDrawer);
+    const scrim = document.getElementById('usage-scrim');
+    if (scrim) scrim.addEventListener('click', uCloseDrawer);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') uCloseDrawer(); });
+    let rT = null;
+    window.addEventListener('resize', () => {
+        if (!usageState.data || !document.getElementById('tab-usage').classList.contains('active')) return;
+        clearTimeout(rT); rT = setTimeout(uRenderAll, 120);
+    });
+    window.addEventListener('scroll', uHideTip, { passive: true });
+    const content = document.querySelector('.content');
+    if (content) content.addEventListener('scroll', uHideTip, { passive: true });
+})();
 
 async function flushUsage() {
     const btn = document.getElementById('flush-btn');
