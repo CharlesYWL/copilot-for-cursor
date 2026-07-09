@@ -5,9 +5,10 @@ import { logIncomingRequest, logTransformedRequest } from './debug-logger';
 import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type RequestLog } from './usage-db';
 import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from './auth-config';
 import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, deleteUpstreamApiKey } from './upstream-auth';
-import { compactIfNeeded, isMaxMode } from './max-mode';
+import { compactIfNeeded, isMaxMode, setMaxModeEnabled } from './max-mode';
 import { needsResponsesAPI, resolveUpstreamModelId } from './model-routing';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
+import { isTunnelProvider, loadProxySettings, saveProxySettings } from './settings-config';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -50,6 +51,31 @@ let responseCounter = 0;
 console.log(`🚀 Proxy Router running on http://localhost:${PORT}`);
 console.log(`🔗 Forwarding to ${TARGET_URL}`);
 console.log(`🏷️  Prefix: "${PREFIX}"`);
+
+function getLiveSettings() {
+  const settings = loadProxySettings();
+  const auth = loadAuthConfig();
+  const tunnelState = getTunnelState();
+  return {
+    maxMode: isMaxMode(),
+    requireApiKey: auth.requireApiKey,
+    tunnel: {
+      ...tunnelState,
+      enabled: tunnelState.status === 'starting' || tunnelState.status === 'running',
+      activeProvider: tunnelState.provider,
+      provider: settings.tunnel.provider,
+      autoStart: settings.tunnel.autoStart,
+    },
+  };
+}
+
+let settingsMutationQueue: Promise<unknown> = Promise.resolve();
+
+function queueSettingsMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const result = settingsMutationQueue.then(mutation, mutation);
+  settingsMutationQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
 
 Bun.serve({
   port: PORT,
@@ -153,36 +179,198 @@ Bun.serve({
         if (name !== undefined && typeof name !== 'string') {
             return Response.json({ error: "`name` must be a string if provided" }, { status: 400, headers: corsHeaders });
         }
-        const config = loadAuthConfig();
-        const newKey = generateApiKey(name || 'Untitled');
-        config.keys.push(newKey);
-        saveAuthConfig(config);
-        return Response.json(newKey, { headers: corsHeaders });
+        try {
+            return await queueSettingsMutation(async () => {
+                const config = loadAuthConfig();
+                const newKey = generateApiKey(name || 'Untitled');
+                config.keys.push(newKey);
+                saveAuthConfig(config);
+                return Response.json(newKey, { headers: corsHeaders });
+            });
+        } catch (e: any) {
+            console.error('❌ Failed to create API key:', e);
+            return Response.json({ error: e?.message || 'Failed to create API key' }, { status: 500, headers: corsHeaders });
+        }
     }
 
     if (url.pathname.startsWith("/api/keys/") && req.method === "PUT") {
         const id = url.pathname.split('/').pop();
-        const { active } = await req.json();
-        const config = loadAuthConfig();
-        const key = config.keys.find(k => k.id === id);
-        if (key) { key.active = active; saveAuthConfig(config); }
-        return Response.json({ ok: true }, { headers: corsHeaders });
+        let body: { active?: unknown };
+        try {
+            body = await req.json() as { active?: unknown };
+        } catch {
+            return Response.json({ error: 'Invalid JSON body' }, { status: 400, headers: corsHeaders });
+        }
+        if (typeof body.active !== 'boolean') {
+            return Response.json({ error: '`active` must be a boolean' }, { status: 400, headers: corsHeaders });
+        }
+        try {
+            return await queueSettingsMutation(async () => {
+                const config = loadAuthConfig();
+                const key = config.keys.find(k => k.id === id);
+                if (!key) {
+                    return Response.json({ error: 'Key not found' }, { status: 404, headers: corsHeaders });
+                }
+                key.active = body.active as boolean;
+                saveAuthConfig(config);
+                return Response.json({ ok: true }, { headers: corsHeaders });
+            });
+        } catch (e: any) {
+            console.error('❌ Failed to update API key:', e);
+            return Response.json({ error: e?.message || 'Failed to update API key' }, { status: 500, headers: corsHeaders });
+        }
     }
 
     if (url.pathname.startsWith("/api/keys/") && req.method === "DELETE") {
         const id = url.pathname.split('/').pop();
-        const config = loadAuthConfig();
-        config.keys = config.keys.filter(k => k.id !== id);
-        saveAuthConfig(config);
-        return Response.json({ ok: true }, { headers: corsHeaders });
+        try {
+            return await queueSettingsMutation(async () => {
+                const config = loadAuthConfig();
+                const keyIndex = config.keys.findIndex(k => k.id === id);
+                if (keyIndex === -1) {
+                    return Response.json({ error: 'Key not found' }, { status: 404, headers: corsHeaders });
+                }
+                config.keys.splice(keyIndex, 1);
+                saveAuthConfig(config);
+                return Response.json({ ok: true }, { headers: corsHeaders });
+            });
+        } catch (e: any) {
+            console.error('❌ Failed to delete API key:', e);
+            return Response.json({ error: e?.message || 'Failed to delete API key' }, { status: 500, headers: corsHeaders });
+        }
+    }
+
+    if (url.pathname === "/api/settings" && req.method === "GET") {
+        return Response.json(getLiveSettings(), { headers: corsHeaders });
+    }
+
+    if (url.pathname === "/api/settings" && req.method === "PATCH") {
+        let body: unknown;
+        try {
+            body = await req.json();
+        } catch {
+            return Response.json({ error: 'Invalid JSON body' }, { status: 400, headers: corsHeaders });
+        }
+        if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+            return Response.json({ error: 'Request body must be a JSON object' }, { status: 400, headers: corsHeaders });
+        }
+        const unknownSettingsFields = Object.keys(body).filter(
+            key => !['maxMode', 'requireApiKey', 'tunnel'].includes(key),
+        );
+        if (unknownSettingsFields.length > 0) {
+            return Response.json(
+                { error: `Unknown settings field(s): ${unknownSettingsFields.join(', ')}` },
+                { status: 400, headers: corsHeaders },
+            );
+        }
+
+        try {
+          return await queueSettingsMutation(async () => {
+            const patch = body as {
+                maxMode?: unknown;
+                requireApiKey?: unknown;
+                tunnel?: unknown;
+            };
+            if (patch.maxMode !== undefined && typeof patch.maxMode !== 'boolean') {
+                return Response.json({ error: '`maxMode` must be a boolean' }, { status: 400, headers: corsHeaders });
+            }
+            if (patch.requireApiKey !== undefined && typeof patch.requireApiKey !== 'boolean') {
+                return Response.json({ error: '`requireApiKey` must be a boolean' }, { status: 400, headers: corsHeaders });
+            }
+            const settings = loadProxySettings();
+
+            if (patch.tunnel !== undefined) {
+                if (typeof patch.tunnel !== 'object' || patch.tunnel === null || Array.isArray(patch.tunnel)) {
+                    return Response.json({ error: '`tunnel` must be an object' }, { status: 400, headers: corsHeaders });
+                }
+                const candidate = patch.tunnel as Record<string, unknown>;
+                const unknownTunnelFields = Object.keys(candidate).filter(
+                    key => !['enabled', 'autoStart', 'provider', 'authtoken'].includes(key),
+                );
+                if (unknownTunnelFields.length > 0) {
+                    return Response.json(
+                        { error: `Unknown tunnel field(s): ${unknownTunnelFields.join(', ')}` },
+                        { status: 400, headers: corsHeaders },
+                    );
+                }
+                if (candidate.enabled !== undefined && typeof candidate.enabled !== 'boolean') {
+                    return Response.json({ error: '`tunnel.enabled` must be a boolean' }, { status: 400, headers: corsHeaders });
+                }
+                if (candidate.autoStart !== undefined && typeof candidate.autoStart !== 'boolean') {
+                    return Response.json({ error: '`tunnel.autoStart` must be a boolean' }, { status: 400, headers: corsHeaders });
+                }
+                if (candidate.provider !== undefined && !isTunnelProvider(candidate.provider)) {
+                    return Response.json({ error: '`tunnel.provider` must be cloudflared, ngrok, or bore' }, { status: 400, headers: corsHeaders });
+                }
+                if (candidate.authtoken !== undefined && typeof candidate.authtoken !== 'string') {
+                    return Response.json({ error: '`tunnel.authtoken` must be a string' }, { status: 400, headers: corsHeaders });
+                }
+
+                const enabled = candidate.enabled as boolean | undefined;
+                const autoStart = candidate.autoStart as boolean | undefined;
+                const provider = candidate.provider as TunnelProvider | undefined;
+                const authtoken = candidate.authtoken as string | undefined;
+                const effectiveProvider = provider ?? settings.tunnel.provider;
+                if (authtoken && effectiveProvider !== 'ngrok') {
+                    return Response.json({ error: '`tunnel.authtoken` is only valid for ngrok' }, { status: 400, headers: corsHeaders });
+                }
+
+                if (enabled === true) {
+                    try {
+                        await startTunnel(effectiveProvider, { authtoken });
+                    } catch (e: any) {
+                        return Response.json(
+                            { error: e?.message || 'Failed to start tunnel', settings: getLiveSettings() },
+                            { status: 500, headers: corsHeaders },
+                        );
+                    }
+                } else if (enabled === false) {
+                    await stopTunnel();
+                }
+
+                if (provider) settings.tunnel.provider = provider;
+                if (autoStart !== undefined) settings.tunnel.autoStart = autoStart;
+            }
+
+            if (patch.maxMode !== undefined) {
+                settings.maxMode = patch.maxMode;
+                setMaxModeEnabled(patch.maxMode);
+            }
+            if (patch.requireApiKey !== undefined) {
+                const auth = loadAuthConfig();
+                auth.requireApiKey = patch.requireApiKey;
+                saveAuthConfig(auth);
+            }
+            saveProxySettings(settings);
+            return Response.json(getLiveSettings(), { headers: corsHeaders });
+          });
+        } catch (e: any) {
+            console.error('❌ Failed to update settings:', e);
+            return Response.json({ error: e?.message || 'Failed to update settings' }, { status: 500, headers: corsHeaders });
+        }
     }
 
     if (url.pathname === "/api/settings/auth" && req.method === "PUT") {
-        const { requireApiKey } = await req.json();
-        const config = loadAuthConfig();
-        config.requireApiKey = requireApiKey;
-        saveAuthConfig(config);
-        return Response.json({ ok: true }, { headers: corsHeaders });
+        let body: { requireApiKey?: unknown };
+        try {
+            body = await req.json() as { requireApiKey?: unknown };
+        } catch {
+            return Response.json({ error: 'Invalid JSON body' }, { status: 400, headers: corsHeaders });
+        }
+        if (typeof body.requireApiKey !== 'boolean') {
+            return Response.json({ error: '`requireApiKey` must be a boolean' }, { status: 400, headers: corsHeaders });
+        }
+        try {
+            return await queueSettingsMutation(async () => {
+                const config = loadAuthConfig();
+                config.requireApiKey = body.requireApiKey as boolean;
+                saveAuthConfig(config);
+                return Response.json({ ok: true }, { headers: corsHeaders });
+            });
+        } catch (e: any) {
+            console.error('❌ Failed to update auth settings:', e);
+            return Response.json({ error: e?.message || 'Failed to update auth settings' }, { status: 500, headers: corsHeaders });
+        }
     }
 
     // ── Upstream (copilot-api) key management ────────────────────────
@@ -219,18 +407,30 @@ Bun.serve({
     if (url.pathname === "/api/tunnel" && req.method === "POST") {
         try {
             const body = await req.json() as { provider?: TunnelProvider; authtoken?: string };
-            if (!body.provider || !['cloudflared', 'ngrok', 'bore'].includes(body.provider)) {
+            if (!isTunnelProvider(body.provider)) {
                 return Response.json({ error: 'Invalid provider' }, { status: 400, headers: corsHeaders });
             }
-            startTunnel(body.provider, { authtoken: body.authtoken }).catch(() => {});
-            return Response.json(getTunnelState(), { headers: corsHeaders });
+            if (body.authtoken && body.provider !== 'ngrok') {
+                return Response.json({ error: 'authtoken is only valid for ngrok' }, { status: 400, headers: corsHeaders });
+            }
+            return await queueSettingsMutation(async () => {
+                await startTunnel(body.provider as TunnelProvider, { authtoken: body.authtoken });
+                return Response.json(getTunnelState(), { headers: corsHeaders });
+            });
         } catch (e: any) {
             return Response.json({ error: e?.message || 'Failed to start tunnel' }, { status: 500, headers: corsHeaders });
         }
     }
     if (url.pathname === "/api/tunnel" && req.method === "DELETE") {
-        await stopTunnel();
-        return Response.json(getTunnelState(), { headers: corsHeaders });
+        try {
+            return await queueSettingsMutation(async () => {
+                await stopTunnel();
+                return Response.json(getTunnelState(), { headers: corsHeaders });
+            });
+        } catch (e: any) {
+            console.error('❌ Failed to stop tunnel:', e);
+            return Response.json({ error: e?.message || 'Failed to stop tunnel' }, { status: 500, headers: corsHeaders });
+        }
     }
     if (url.pathname === "/api/tunnel/stream") {
         const stream = new ReadableStream({

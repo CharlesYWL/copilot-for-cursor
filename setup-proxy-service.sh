@@ -2,7 +2,7 @@
 
 PLIST_PATH="$HOME/Library/LaunchAgents/com.user.copilot-proxy.plist"
 BUN_PATH="/Users/mahy/.bun/bin/bun"
-SCRIPT_PATH="$(pwd)/proxy-router.ts"
+SCRIPT_PATH="$(pwd)/start.ts"
 
 echo "Creating launchd service for Copilot Proxy (Port 4142)..."
 

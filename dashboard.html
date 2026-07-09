@@ -921,6 +921,10 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
                 <button id="tunnel-start-btn" onclick="handleTunnelStart()" class="btn-primary" style="flex:1; padding:11px 16px;">Start Tunnel</button>
                 <button id="tunnel-stop-btn" onclick="handleTunnelStop()" style="flex:1; background:rgba(248,113,113,0.15); color:var(--red); border:1px solid rgba(248,113,113,0.35); padding:11px 16px; border-radius:8px; cursor:pointer; font-weight:600; display:none;">Stop Tunnel</button>
             </div>
+            <label style="display:flex; align-items:center; gap:8px; margin-top:12px; color:var(--text-dim); font-size:13px; cursor:pointer;">
+                <input id="tunnel-auto-start" type="checkbox">
+                Auto-start this tunnel provider whenever the proxy launches
+            </label>
         </div>
 
         <div id="tunnel-result" class="card" style="display:none; margin-bottom:16px;">
@@ -1777,12 +1781,28 @@ function initTunnelTab() {
 
     const providerSelect = document.getElementById('tunnel-provider');
     const authtokenWrap = document.getElementById('tunnel-authtoken-wrap');
+    const autoStartToggle = document.getElementById('tunnel-auto-start');
     const updateAuthVisibility = () => {
         authtokenWrap.style.display = providerSelect.value === 'ngrok' ? 'block' : 'none';
     };
-    providerSelect.addEventListener('change', updateAuthVisibility);
+    providerSelect.addEventListener('change', () => {
+        updateAuthVisibility();
+        saveTunnelPreferences();
+    });
+    autoStartToggle.addEventListener('change', saveTunnelPreferences);
     updateAuthVisibility();
 
+    fetch('/api/settings').then(async r => {
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+    }).then(settings => {
+        if (settings.tunnel) {
+            providerSelect.value = settings.tunnel.provider || 'cloudflared';
+            autoStartToggle.checked = !!settings.tunnel.autoStart;
+            updateAuthVisibility();
+            applyTunnelState(settings.tunnel);
+        }
+    }).catch(() => {});
     fetch('/api/tunnel').then(r => r.json()).then(applyTunnelState).catch(() => {});
 
     if (!tunnelEventSource) {
@@ -1870,18 +1890,41 @@ function renderQRCode(text) {
     }
 }
 
+async function saveTunnelPreferences() {
+    try {
+        const provider = document.getElementById('tunnel-provider').value;
+        const autoStart = document.getElementById('tunnel-auto-start').checked;
+        const response = await fetch('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tunnel: { provider, autoStart } }),
+        });
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+    } catch (error) {
+        console.error('Failed to save tunnel settings:', error);
+    }
+}
+
 async function handleTunnelStart() {
     const provider = document.getElementById('tunnel-provider').value;
     const authtoken = document.getElementById('tunnel-authtoken').value.trim() || undefined;
+    const autoStart = document.getElementById('tunnel-auto-start').checked;
     const startBtn = document.getElementById('tunnel-start-btn');
     startBtn.disabled = true;
     startBtn.textContent = 'Starting…';
     try {
-        await fetch('/api/tunnel', {
-            method: 'POST',
+        const response = await fetch('/api/settings', {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ provider, authtoken }),
+            body: JSON.stringify({ tunnel: { enabled: true, provider, autoStart, authtoken } }),
         });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to start tunnel');
+        applyTunnelState(data.tunnel);
+    } catch (error) {
+        applyTunnelState({ status: 'error', provider, error: error.message || String(error) });
     } finally {
         startBtn.disabled = false;
     }
@@ -1891,7 +1934,16 @@ async function handleTunnelStop() {
     const stopBtn = document.getElementById('tunnel-stop-btn');
     stopBtn.disabled = true;
     try {
-        await fetch('/api/tunnel', { method: 'DELETE' });
+        const response = await fetch('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tunnel: { enabled: false } }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to stop tunnel');
+        applyTunnelState(data.tunnel);
+    } catch (error) {
+        applyTunnelState({ status: 'error', error: error.message || String(error) });
     } finally {
         stopBtn.disabled = false;
     }

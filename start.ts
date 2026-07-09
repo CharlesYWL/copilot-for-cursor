@@ -7,14 +7,13 @@
 import { spawn, sleep } from 'bun';
 import { existsSync } from 'fs';
 import { getUpstreamAuthHeader } from './upstream-auth';
-import { enableMaxMode, isMaxMode, fetchAndCacheModelLimits } from './max-mode';
-import { stopTunnel } from './tunnel';
+import { isMaxMode, setMaxModeEnabled, fetchAndCacheModelLimits } from './max-mode';
+import { startTunnel, stopTunnel } from './tunnel';
+import { loadProxySettings } from './settings-config';
+import { parseStartupOptions, type TunnelStartupAction } from './startup-options';
 
 // ── Parse CLI flags ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
-if (args.includes('--max')) {
-    enableMaxMode();
-}
 
 const COPILOT_API_PORT = 4141;
 const PROXY_PORT = 4142;
@@ -25,6 +24,19 @@ const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
 const CYAN = '\x1b[36m';
 const RESET = '\x1b[0m';
+
+async function updateRunningProxyTunnel(action: TunnelStartupAction): Promise<void> {
+    const response = await fetch(`http://localhost:${PROXY_PORT}/api/tunnel`, {
+        method: action.enabled ? 'POST' : 'DELETE',
+        headers: action.enabled ? { 'Content-Type': 'application/json' } : undefined,
+        body: action.enabled ? JSON.stringify({ provider: action.provider }) : undefined,
+        signal: AbortSignal.timeout(120000),
+    });
+    if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`Running proxy rejected tunnel update (${response.status}): ${detail}`);
+    }
+}
 
 async function isPortInUse(port: number): Promise<boolean> {
     try {
@@ -78,6 +90,8 @@ const openInBrowser = (url: string): void => {
 
 async function main() {
     console.log(`${CYAN}🚀 Starting Copilot Proxy Stack...${RESET}\n`);
+    const startupOptions = parseStartupOptions(args, loadProxySettings());
+    setMaxModeEnabled(startupOptions.maxMode);
 
     // 1. Check if copilot-api is already running
     const copilotAlreadyRunning = await isPortInUse(COPILOT_API_PORT);
@@ -169,6 +183,10 @@ async function main() {
     const proxyAlreadyRunning = await isPortInUse(PROXY_PORT);
     if (proxyAlreadyRunning) {
         console.log(`${GREEN}✅ proxy-router already running on port ${PROXY_PORT}${RESET}`);
+        if (startupOptions.tunnelAction) {
+            await updateRunningProxyTunnel(startupOptions.tunnelAction);
+            console.log(`${GREEN}✅ Updated the running proxy tunnel${RESET}`);
+        }
         console.log(`\n${CYAN}🎉 Everything is running! Configure Cursor to use: http://localhost:${PROXY_PORT}/v1${RESET}`);
         // Keep alive if we started copilot-api
         if (copilotProc) await copilotProc.exited;
@@ -178,6 +196,16 @@ async function main() {
     // 3. Start proxy-router in the same process
     console.log(`${YELLOW}⏳ Starting proxy-router on port ${PROXY_PORT}...${RESET}`);
     await import('./proxy-router');
+
+    if (startupOptions.tunnelProvider) {
+        console.log(`${YELLOW}⏳ Starting ${startupOptions.tunnelProvider} tunnel...${RESET}`);
+        try {
+            await startTunnel(startupOptions.tunnelProvider);
+            console.log(`${GREEN}✅ Tunnel process started (${startupOptions.tunnelProvider})${RESET}`);
+        } catch (err: any) {
+            console.error(`${RED}❌ Tunnel failed to start: ${err?.message || err}${RESET}`);
+        }
+    }
 
     console.log(`\n${CYAN}🎉 All services running!${RESET}`);
     console.log(`${CYAN}   copilot-api:   http://localhost:${COPILOT_API_PORT}${RESET}`);
