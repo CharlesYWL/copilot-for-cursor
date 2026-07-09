@@ -1,6 +1,6 @@
 {
   "name": "copilot-for-cursor",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Proxy that bridges GitHub Copilot API to Cursor IDE — translates Anthropic format, bridges Responses API for GPT 5.x, and more",
   "bin": {
     "copilot-for-cursor": "bin/cli.js"
@@ -12,7 +12,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build start.ts --outdir dist --target node",
+    "build": "bun build start.ts --outdir dist --target bun",
     "dev": "bun run start.ts",
     "start": "bun dist/start.js"
   },

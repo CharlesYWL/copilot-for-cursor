@@ -6,8 +6,10 @@ import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type Reque
 import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from './auth-config';
 import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, deleteUpstreamApiKey } from './upstream-auth';
 import { compactIfNeeded, isMaxMode } from './max-mode';
-import { needsResponsesAPI } from './model-routing';
+import { needsResponsesAPI, resolveUpstreamModelId } from './model-routing';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 // ── Console capture for SSE streaming ─────────────────────────────────────────
 interface ConsoleLine {
@@ -57,11 +59,21 @@ Bun.serve({
 
     // ── Dashboard ─────────────────────────────────────────────────────────
     if (url.pathname === "/" || url.pathname === "/dashboard.html") {
+      const dashboardCandidates = [
+        join(import.meta.dir, "dashboard.html"),
+        join(import.meta.dir, "..", "dashboard.html"),
+        join(process.cwd(), "dashboard.html"),
+      ];
+      const dashboardPath = dashboardCandidates.find(path => existsSync(path));
+      if (!dashboardPath) {
+        console.error(`❌ Dashboard not found. Checked: ${dashboardCandidates.join(", ")}`);
+        return new Response("Dashboard not found.", { status: 404 });
+      }
       try {
-        const dashboardPath = import.meta.dir + "/dashboard.html";
         const dashboardContent = await Bun.file(dashboardPath).text();
         return new Response(dashboardContent, { headers: { "Content-Type": "text/html" } });
       } catch (e) {
+        console.error(`❌ Failed to read dashboard at ${dashboardPath}:`, e);
         return new Response("Dashboard not found.", { status: 404 });
       }
     }
@@ -310,6 +322,11 @@ Bun.serve({
         const originalModel = json.model;
         if (json.model && typeof json.model === 'string' && json.model.startsWith(PREFIX)) {
           json.model = json.model.slice(PREFIX.length);
+        }
+        if (typeof json.model === 'string') {
+          json.model = resolveUpstreamModelId(json.model);
+        }
+        if (originalModel !== json.model) {
           console.log(`\uD83D\uDD04 [/responses] Rewriting model: ${originalModel} -> ${json.model}`);
         }
         const respModel = json.model;
@@ -346,7 +363,12 @@ Bun.serve({
 
         if (json.model && json.model.startsWith(PREFIX)) {
           targetModel = json.model.slice(PREFIX.length);
+        }
+        if (typeof targetModel === 'string') {
+          targetModel = resolveUpstreamModelId(targetModel);
           json.model = targetModel;
+        }
+        if (originalModel !== targetModel) {
           console.log(`🔄 Rewriting model: ${originalModel} -> ${json.model}`);
         }
 
