@@ -38,7 +38,25 @@ bun run start.ts --max
 
 > **🛡️ Always-on safety net:** Even without `--max`, the proxy now auto-compacts at **95%** of the model's input limit and falls back to hard truncation of the oldest messages if summarization fails. This prevents Cursor from ever hitting upstream `context_length_exceeded` errors. Use `--max` if you want proactive (80%) compaction for smoother long sessions.
 
-### Then start an HTTPS tunnel
+### Start with an HTTPS tunnel
+
+Start the stack and a Cloudflare Quick Tunnel in one command:
+
+```bash
+npx copilot-for-cursor --tunnel
+```
+
+Choose another provider or suppress a persisted auto-start setting:
+
+```bash
+npx copilot-for-cursor --tunnel=ngrok
+npx copilot-for-cursor --tunnel=bore
+npx copilot-for-cursor --no-tunnel
+```
+
+`--tunnel` defaults to `cloudflared`. CLI tunnel flags affect the current run; use the dashboard or live settings API to persist auto-start.
+
+### Or start a tunnel after launch
 
 Cursor requires HTTPS. You have two options:
 
@@ -83,6 +101,8 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 | `debug-logger.ts` | Request/response debug logging helpers |
 | `start.ts` | One-command launcher for copilot-api + proxy-router |
 | `max-mode.ts` | Auto-compaction for long conversations (`--max` flag) |
+| `settings-config.ts` | Persistent live settings (`~/.copilot-proxy/settings.json`) |
+| `startup-options.ts` | CLI parsing for max mode and tunnel overrides |
 | `usage-db.ts` | Persistent request/token usage tracking |
 | `auth-config.ts` | API key generation, validation, and config persistence |
 | `upstream-auth.ts` | Upstream copilot-api authentication and key management |
@@ -165,14 +185,54 @@ Embedding-only models also listed by the upstream API are `cus-text-embedding-3-
 *   **🔍 Search:** `Grep`, `Glob`, `SemanticSearch`
 *   **🔌 MCP Tools:** External tools (Neon, Playwright, etc.)
 *   **🗜️ Max Mode:** Auto-compact long conversations to stay within token limits (`--max`)
+*   **⚙️ Live Settings:** Agents can update max mode, API-key enforcement, and tunnel state without restarting
+
+---
+
+## ⚙️ Live Settings API
+
+Use the local management endpoint to inspect or update the running proxy:
+
+```bash
+curl http://localhost:4142/api/settings
+```
+
+Start a Cloudflare tunnel immediately, remember the provider, and enable tunnel auto-start for future launches:
+
+```bash
+curl -X PATCH http://localhost:4142/api/settings \
+  -H "Content-Type: application/json" \
+  -d '{"maxMode":true,"tunnel":{"enabled":true,"autoStart":true,"provider":"cloudflared"}}'
+```
+
+Stop the current tunnel without changing its saved auto-start preference:
+
+```bash
+curl -X PATCH http://localhost:4142/api/settings \
+  -H "Content-Type: application/json" \
+  -d '{"tunnel":{"enabled":false}}'
+```
+
+Available fields:
+
+| Field | Type | Behavior |
+|---|---|---|
+| `maxMode` | boolean | Enables/disables proactive 80% conversation compaction immediately and persists it |
+| `requireApiKey` | boolean | Enables/disables API-key enforcement for `/v1/*` requests |
+| `tunnel.enabled` | boolean | Starts or stops the tunnel immediately |
+| `tunnel.autoStart` | boolean | Starts the saved tunnel provider on future launches |
+| `tunnel.provider` | string | `cloudflared`, `ngrok`, or `bore` |
+| `tunnel.authtoken` | string | Optional one-time ngrok token; never persisted |
+
+Settings mutations are serialized so concurrent agents cannot overwrite one another. Call management endpoints through `localhost` or another trusted connection; they control the live proxy and tunnel.
 
 ---
 
 ## 🔒 Security
 
-### Dashboard Password
+### Management Access
 
-The dashboard is password-protected. On first visit, set a password to prevent unauthorized access.
+The dashboard and `/api/*` management endpoints control the local proxy. Keep them on a trusted connection and avoid sharing the dashboard URL. Model requests can be protected separately with API-key enforcement.
 
 ### API Key Management
 
@@ -197,9 +257,10 @@ When enabled, all `/v1/*` requests must include `Authorization: Bearer <your-key
 
 Access the dashboard at **[http://localhost:4142](http://localhost:4142)**
 
-Three tabs:
+Four tabs:
 - **Endpoint** — Proxy URL, API key management, model list
 - **Usage** — Request stats, token counts, per-model breakdown, recent requests
+- **Tunnel** — Provider selection, live tunnel status, and auto-start preference
 - **Console Log** — Real-time proxy logs with color-coded levels
 
 ---
@@ -214,6 +275,8 @@ Three tabs:
 | Agent mode | ✅ Works |
 | All GPT-5.x models | ✅ Works |
 | Max mode (long session compaction) | ✅ Works (`--max` flag) |
+| Live settings API | ✅ Works (`GET/PATCH /api/settings`) |
+| Tunnel auto-start | ✅ Works (`--tunnel` or persisted dashboard/API setting) |
 | Extended thinking (chain-of-thought) | ❌ Stripped |
 | Prompt caching (`cache_control`) | ❌ Stripped |
 | Claude Vision | ❌ Not supported via Copilot |

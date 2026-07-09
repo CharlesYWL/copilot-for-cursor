@@ -5,7 +5,11 @@ import { needsResponsesAPI, resolveAdvertisedModelId } from './model-routing';
 let maxModeEnabled = false;
 
 export function enableMaxMode(): void {
-    maxModeEnabled = true;
+    setMaxModeEnabled(true);
+}
+
+export function setMaxModeEnabled(enabled: boolean): void {
+    maxModeEnabled = enabled;
 }
 
 export function isMaxMode(): boolean {
