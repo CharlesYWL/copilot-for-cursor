@@ -92,3 +92,47 @@ describe('responses-bridge token cap', () => {
         expect(captured.calls[0].body.max_output_tokens).toBeUndefined();
     });
 });
+
+describe('responses-bridge tool calls', () => {
+    test('uses an fc-prefixed item id while preserving the chat tool call id', async () => {
+        const captured = captureFetch();
+        await handleResponsesAPIBridge(
+            {
+                model: 'gpt-5.6-sol',
+                messages: [
+                    {
+                        role: 'assistant',
+                        content: null,
+                        tool_calls: [{
+                            id: 'call_aFi1RbcZqxeOERRPSLeDt9Ep',
+                            type: 'function',
+                            function: { name: 'Subagent', arguments: '{"description":"Investigate"}' },
+                        }],
+                    },
+                    {
+                        role: 'tool',
+                        tool_call_id: 'call_aFi1RbcZqxeOERRPSLeDt9Ep',
+                        content: 'Error: Invalid arguments',
+                    },
+                ],
+            },
+            makeDummyRequest(), 'chat-tool-1', 'http://localhost:4141',
+        );
+
+        expect(captured.calls.length).toBe(1);
+        expect(captured.calls[0].body.input).toEqual([
+            {
+                type: 'function_call',
+                id: 'fc_aFi1RbcZqxeOERRPSLeDt9Ep',
+                call_id: 'call_aFi1RbcZqxeOERRPSLeDt9Ep',
+                name: 'Subagent',
+                arguments: '{"description":"Investigate"}',
+            },
+            {
+                type: 'function_call_output',
+                call_id: 'call_aFi1RbcZqxeOERRPSLeDt9Ep',
+                output: 'Error: Invalid arguments',
+            },
+        ]);
+    });
+});

@@ -6,6 +6,15 @@ export interface BridgeResult {
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
+function toResponsesFunctionCallItemId(callId: unknown): string {
+    if (typeof callId !== 'string' || !callId) {
+        throw new Error('Assistant tool call is missing a valid id');
+    }
+    if (callId.startsWith('fc_')) return callId;
+    if (callId.startsWith('call_')) return `fc_${callId.slice(5)}`;
+    return `fc_${callId}`;
+}
+
 export async function handleResponsesAPIBridge(json: any, req: Request, chatId: string, targetUrl: string): Promise<BridgeResult> {
     const corsHeaders = { "Access-Control-Allow-Origin": "*" };
 
@@ -26,7 +35,8 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
         responsesReq.input = json.input;
     } else if (nonSystemMsgs.length > 0) {
         responsesReq.input = nonSystemMsgs.map((m: any) => {
-            const content = typeof m.content === 'string' ? m.content
+            const content = m.content == null ? ''
+                : typeof m.content === 'string' ? m.content
                 : Array.isArray(m.content) ? m.content.map((p: any) => {
                     if (p.type === 'text') return { type: 'input_text', text: p.text };
                     if (p.type === 'image_url') return { type: 'input_image', image_url: p.image_url.url };
@@ -50,7 +60,7 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
                 for (const tc of m.tool_calls) {
                     items.push({
                         type: 'function_call',
-                        id: tc.id,
+                        id: toResponsesFunctionCallItemId(tc.id),
                         call_id: tc.id,
                         name: tc.function.name,
                         arguments: tc.function.arguments,

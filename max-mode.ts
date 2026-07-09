@@ -1,5 +1,5 @@
 import { getUpstreamAuthHeader } from './upstream-auth';
-import { needsResponsesAPI } from './model-routing';
+import { needsResponsesAPI, resolveAdvertisedModelId } from './model-routing';
 
 // ── Global config ─────────────────────────────────────────────────────────────
 let maxModeEnabled = false;
@@ -69,7 +69,9 @@ export async function fetchAndCacheModelLimits(targetUrl: string): Promise<void>
 }
 
 export function getModelLimits(model: string): ModelLimits {
-    return modelLimitsCache.get(model) || getDefaultLimits(model);
+    return modelLimitsCache.get(model)
+        || modelLimitsCache.get(resolveAdvertisedModelId(model))
+        || getDefaultLimits(model);
 }
 
 // ── Token estimation ──────────────────────────────────────────────────────────

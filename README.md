@@ -4,7 +4,7 @@
 
 **Unlock the full power of GitHub Copilot in Cursor IDE.**
 
-Use **all** Copilot models (GPT-5.4, Claude Opus 4.6, Gemini 3.1, etc.) in Cursor — including Plan mode, Agent mode, and tool calls.
+Use **all** Copilot models (GPT-5.6, Claude Opus 4.8, Gemini 3.5, etc.) in Cursor — including Plan mode, Agent mode, and tool calls.
 
 ---
 
@@ -95,38 +95,43 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 2.  Add a new **OpenAI Compatible** model:
     *   **Base URL:** `https://your-tunnel-url.trycloudflare.com/v1`
     *   **API Key:** `dummy` (any value works)
-    *   **Model Name:** Use a **prefixed name** — e.g., `cus-gpt-5.4`, `cus-claude-opus-4.6`
+    *   **Model Name:** Use a **prefixed name** — e.g., `cus-gpt-5.6-sol`, `cus-claude-opus-4-8`
 
 > **⚠️ Important:** You **must** use the `cus-` prefix. Without it, Cursor routes the request to its own backend.
 
 > **💡 Tip:** Visit the [Dashboard](http://localhost:4142) to see all available models and copy their IDs.
 
-### Tested Models (19/20 passing)
+### Currently Available Models
 
-| Cursor Model Name | Actual Model | Status |
-|---|---|---|
-| `cus-gpt-4o` | GPT-4o | ✅ |
-| `cus-gpt-4.1` | GPT-4.1 | ✅ |
-| `cus-gpt-41-copilot` | GPT-4.1 Copilot | ❌ Not supported by GitHub |
-| `cus-gpt-5-mini` | GPT-5 Mini | ✅ |
-| `cus-gpt-5.1` | GPT-5.1 | ✅ (deprecating 2026-04-15) |
-| `cus-gpt-5.2` | GPT-5.2 | ✅ |
-| `cus-gpt-5.2-codex` | GPT-5.2 Codex | ✅ |
-| `cus-gpt-5.3-codex` | GPT-5.3 Codex | ✅ |
-| `cus-gpt-5.4` | GPT-5.4 | ✅ |
-| `cus-gpt-5.4-mini` | GPT-5.4 Mini | ✅ |
-| `cus-claude-haiku-4.5` | Claude Haiku 4.5 | ✅ |
-| `cus-claude-sonnet-4` | Claude Sonnet 4 | ✅ |
-| `cus-claude-sonnet-4.5` | Claude Sonnet 4.5 | ✅ |
-| `cus-claude-sonnet-4.6` | Claude Sonnet 4.6 | ✅ |
-| `cus-claude-opus-4.5` | Claude Opus 4.5 | ✅ |
-| `cus-claude-opus-4.6` | Claude Opus 4.6 | ✅ |
-| `cus-gemini-2.5-pro` | Gemini 2.5 Pro | ✅ |
-| `cus-gemini-3-flash-preview` | Gemini 3 Flash | ✅ |
-| `cus-gemini-3.1-pro-preview` | Gemini 3.1 Pro | ✅ |
-| `cus-text-embedding-3-small` | Text Embedding 3 Small | N/A (embedding model) |
+The following catalog was returned by GitHub Copilot on July 9, 2026. Availability can change by account, organization policy, and upstream rollout; the dashboard and `/v1/models` endpoint are authoritative.
 
-> All GPT-5.x models now work thanks to the switch to [@jeffreycao/copilot-api](https://github.com/caozhiyuan/copilot-api), which natively supports the Responses API. The proxy also includes its own Responses API bridge as a fallback.
+| Cursor Model Name | Model | Input Limit | Output Limit |
+|---|---|---:|---:|
+| `cus-claude-haiku-4-5` | Claude Haiku 4.5 | 136K | 64K |
+| `cus-claude-opus-4-5` | Claude Opus 4.5 | 168K | 32K |
+| `cus-claude-opus-4-6` | Claude Opus 4.6 | 936K | 64K |
+| `cus-claude-opus-4-7` | Claude Opus 4.7 | 936K | 64K |
+| `cus-claude-opus-4-8` | Claude Opus 4.8 | 936K | 64K |
+| `cus-claude-sonnet-4-5` | Claude Sonnet 4.5 | 168K | 32K |
+| `cus-claude-sonnet-4-6` | Claude Sonnet 4.6 | 936K | 64K |
+| `cus-claude-sonnet-5` | Claude Sonnet 5 | 936K | 64K |
+| `cus-gemini-2.5-pro` | Gemini 2.5 Pro | 128K | 64K |
+| `cus-gemini-3-flash-preview` | Gemini 3 Flash (Preview) | 128K | 64K |
+| `cus-gemini-3.1-pro-preview` | Gemini 3.1 Pro | 936K | 64K |
+| `cus-gemini-3.5-flash` | Gemini 3.5 Flash | 936K | 64K |
+| `cus-gpt-5-mini` | GPT-5 Mini | 128K | 64K |
+| `cus-gpt-5.3-codex` | GPT-5.3 Codex | 272K | 128K |
+| `cus-gpt-5.4` | GPT-5.4 | 922K | 128K |
+| `cus-gpt-5.4-mini` | GPT-5.4 Mini | 272K | 128K |
+| `cus-gpt-5.5` | GPT-5.5 | 922K | 128K |
+| `cus-gpt-5.6-luna` | GPT-5.6 Luna | 922K | 128K |
+| `cus-gpt-5.6-sol` | GPT-5.6 Sol | 922K | 128K |
+| `cus-gpt-5.6-terra` | GPT-5.6 Terra | 922K | 128K |
+| `cus-mai-code-1-flash-picker` | MAI-Code-1-Flash | 128K | 128K |
+
+Embedding-only models also listed by the upstream API are `cus-text-embedding-3-small`, `cus-text-embedding-3-small-inference`, and `cus-text-embedding-ada-002`.
+
+> Claude minor-version aliases use dashes in Cursor (for example, `cus-claude-opus-4-8`). The proxy translates them to the dotted upstream ID (`claude-opus-4.8`). GPT-5.x models are automatically routed through the Responses API bridge when required.
 
 ![Cursor Settings Configuration](./cursor-settings.png)
 
