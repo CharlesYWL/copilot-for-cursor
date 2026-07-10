@@ -5,6 +5,7 @@ describe('management API access', () => {
     test('allows direct loopback requests', () => {
         expect(isTrustedManagementRequest(new Request('http://localhost:4142/api/settings'))).toBe(true);
         expect(isTrustedManagementRequest(new Request('http://127.0.0.1:4142/api/settings'))).toBe(true);
+        expect(isTrustedManagementRequest(new Request('http://127.0.0.2:4142/api/settings'))).toBe(true);
         expect(isTrustedManagementRequest(new Request('http://[::1]:4142/api/settings'))).toBe(true);
     });
 

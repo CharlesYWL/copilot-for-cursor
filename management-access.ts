@@ -1,8 +1,17 @@
-const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+function isLocalHostname(hostname: string): boolean {
+    if (hostname === 'localhost' || hostname === '[::1]' || hostname === '::1') {
+        return true;
+    }
+
+    const octets = hostname.split('.');
+    return octets.length === 4
+        && octets[0] === '127'
+        && octets.every(octet => /^\d{1,3}$/.test(octet) && Number(octet) <= 255);
+}
 
 function isLocalUrl(value: string): boolean {
     try {
-        return LOCAL_HOSTNAMES.has(new URL(value).hostname.toLowerCase());
+        return isLocalHostname(new URL(value).hostname.toLowerCase());
     } catch {
         return false;
     }
