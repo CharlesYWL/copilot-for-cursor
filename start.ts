@@ -11,6 +11,7 @@ import { isMaxMode, setMaxModeEnabled, fetchAndCacheModelLimits } from './max-mo
 import { startTunnel, stopTunnel } from './tunnel';
 import { loadProxySettings } from './settings-config';
 import { parseStartupOptions, type TunnelStartupAction } from './startup-options';
+import { setSubagentsEnabled } from './subagent-policy';
 
 // ── Parse CLI flags ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -35,6 +36,19 @@ async function updateRunningProxyTunnel(action: TunnelStartupAction): Promise<vo
     if (!response.ok) {
         const detail = await response.text();
         throw new Error(`Running proxy rejected tunnel update (${response.status}): ${detail}`);
+    }
+}
+
+async function updateRunningProxySubagents(enabled: boolean): Promise<void> {
+    const response = await fetch(`http://localhost:${PROXY_PORT}/api/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subagents: { enabled, persist: false } }),
+        signal: AbortSignal.timeout(30000),
+    });
+    if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`Running proxy rejected subagent update (${response.status}): ${detail}`);
     }
 }
 
@@ -92,6 +106,7 @@ async function main() {
     console.log(`${CYAN}🚀 Starting Copilot Proxy Stack...${RESET}\n`);
     const startupOptions = parseStartupOptions(args, loadProxySettings());
     setMaxModeEnabled(startupOptions.maxMode);
+    setSubagentsEnabled(startupOptions.subagentsEnabled);
 
     // 1. Check if copilot-api is already running
     const copilotAlreadyRunning = await isPortInUse(COPILOT_API_PORT);
@@ -183,6 +198,10 @@ async function main() {
     const proxyAlreadyRunning = await isPortInUse(PROXY_PORT);
     if (proxyAlreadyRunning) {
         console.log(`${GREEN}✅ proxy-router already running on port ${PROXY_PORT}${RESET}`);
+        if (startupOptions.subagentsAction !== null) {
+            await updateRunningProxySubagents(startupOptions.subagentsAction);
+            console.log(`${GREEN}✅ Updated the running proxy subagent policy${RESET}`);
+        }
         if (startupOptions.tunnelAction) {
             await updateRunningProxyTunnel(startupOptions.tunnelAction);
             console.log(`${GREEN}✅ Updated the running proxy tunnel${RESET}`);

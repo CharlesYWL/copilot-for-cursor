@@ -728,6 +728,17 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
             </div>
         </div>
 
+        <div class="card" style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="margin: 0; border: none; padding: 0;">BYOK Subagents</h3>
+                <label class="toggle">
+                    <input type="checkbox" id="subagentsToggle" onchange="toggleSubagents(this.checked)">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <p id="subagentsStatus" style="color:#888; font-size:13px; margin:0;">Loading...</p>
+        </div>
+
         <div class="section-title">Available Models</div>
         <div class="table-wrap">
             <div class="table-header">
@@ -1234,6 +1245,34 @@ async function deleteKey(id) {
 }
 
 loadAuthConfigUI();
+
+async function loadSubagentSettings() {
+    try {
+        const response = await fetch('/api/settings');
+        const settings = await response.json();
+        const enabled = settings.subagents?.enabled !== false;
+        document.getElementById('subagentsToggle').checked = enabled;
+        document.getElementById('subagentsStatus').textContent = enabled
+            ? 'Enabled — Cursor may expose Subagent and Task tools to BYOK models'
+            : 'Disabled — the proxy removes Subagent and Task before provider requests';
+    } catch {
+        document.getElementById('subagentsStatus').textContent = 'Failed to load subagent settings';
+    }
+}
+
+async function toggleSubagents(enabled) {
+    const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subagents: { enabled } }),
+    });
+    if (!response.ok) {
+        alert('Failed to update subagent setting: ' + await response.text());
+    }
+    loadSubagentSettings();
+}
+
+loadSubagentSettings();
 
 /* ── Tab 2: Usage ───────────────────────────────────────────── */
 let usageTimer = null;
