@@ -7,6 +7,9 @@ export const TUNNEL_PROVIDERS = ['cloudflared', 'ngrok', 'bore'] as const;
 
 export interface ProxySettings {
     maxMode: boolean;
+    subagents: {
+        enabled: boolean;
+    };
     tunnel: {
         autoStart: boolean;
         provider: TunnelProvider;
@@ -17,6 +20,9 @@ const CONFIG_DIR = join(homedir(), '.copilot-proxy');
 const CONFIG_PATH = join(CONFIG_DIR, 'settings.json');
 const DEFAULT_SETTINGS: ProxySettings = {
     maxMode: false,
+    subagents: {
+        enabled: true,
+    },
     tunnel: {
         autoStart: false,
         provider: 'cloudflared',
@@ -34,9 +40,17 @@ export function normalizeProxySettings(value: unknown): ProxySettings {
     const tunnel = typeof input.tunnel === 'object' && input.tunnel !== null
         ? input.tunnel as Record<string, unknown>
         : {};
+    const subagents = typeof input.subagents === 'object' && input.subagents !== null
+        ? input.subagents as Record<string, unknown>
+        : {};
 
     return {
         maxMode: typeof input.maxMode === 'boolean' ? input.maxMode : DEFAULT_SETTINGS.maxMode,
+        subagents: {
+            enabled: typeof subagents.enabled === 'boolean'
+                ? subagents.enabled
+                : DEFAULT_SETTINGS.subagents.enabled,
+        },
         tunnel: {
             autoStart: typeof tunnel.autoStart === 'boolean'
                 ? tunnel.autoStart
@@ -51,6 +65,7 @@ export function normalizeProxySettings(value: unknown): ProxySettings {
 function cloneSettings(settings: ProxySettings): ProxySettings {
     return {
         maxMode: settings.maxMode,
+        subagents: { ...settings.subagents },
         tunnel: { ...settings.tunnel },
     };
 }

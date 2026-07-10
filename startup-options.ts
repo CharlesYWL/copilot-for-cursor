@@ -8,6 +8,8 @@ export interface TunnelStartupAction {
 
 export interface StartupOptions {
     maxMode: boolean;
+    subagentsEnabled: boolean;
+    subagentsAction: boolean | null;
     tunnelProvider: TunnelProvider | null;
     tunnelAction: TunnelStartupAction | null;
 }
@@ -17,6 +19,11 @@ export function parseStartupOptions(args: string[], settings: ProxySettings): St
     const disableMax = args.includes('--no-max');
     if (enableMax && disableMax) {
         throw new Error('Use only one of --max or --no-max');
+    }
+    const enableSubagents = args.includes('--subagents');
+    const disableSubagents = args.includes('--no-subagents');
+    if (enableSubagents && disableSubagents) {
+        throw new Error('Use only one of --subagents or --no-subagents');
     }
 
     const tunnelArgs = args.filter(arg => arg === '--tunnel' || arg.startsWith('--tunnel='));
@@ -46,6 +53,12 @@ export function parseStartupOptions(args: string[], settings: ProxySettings): St
 
     return {
         maxMode: enableMax ? true : disableMax ? false : settings.maxMode,
+        subagentsEnabled: enableSubagents
+            ? true
+            : disableSubagents
+                ? false
+                : settings.subagents.enabled,
+        subagentsAction: enableSubagents ? true : disableSubagents ? false : null,
         tunnelProvider,
         tunnelAction,
     };
