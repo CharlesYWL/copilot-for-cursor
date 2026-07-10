@@ -64,7 +64,7 @@ npx copilot-for-cursor --tunnel=bore
 npx copilot-for-cursor --no-tunnel
 ```
 
-`--tunnel` defaults to `cloudflared`. CLI tunnel flags affect the current run; use the dashboard or live settings API to persist auto-start.
+`--tunnel` defaults to `cloudflared`. When the public tunnel is ready, the CLI prints the complete Cursor `/v1` endpoint and copies it to the system clipboard. CLI tunnel flags affect the current run; use the dashboard or live settings API to persist auto-start.
 
 > The tunnel exposes the model API, not the management API. Dashboard and `/api/*` management endpoints are intentionally limited to loopback access.
 

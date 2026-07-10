@@ -8,7 +8,8 @@ import { spawn, sleep } from 'bun';
 import { existsSync } from 'fs';
 import { getUpstreamAuthHeader } from './upstream-auth';
 import { isMaxMode, setMaxModeEnabled, fetchAndCacheModelLimits } from './max-mode';
-import { startTunnel, stopTunnel } from './tunnel';
+import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelState } from './tunnel';
+import { buildTunnelApiUrl, copyTextToClipboard } from './tunnel-endpoint';
 import { loadProxySettings } from './settings-config';
 import { parseStartupOptions, type TunnelStartupAction } from './startup-options';
 import { setSubagentsEnabled } from './subagent-policy';
@@ -49,6 +50,62 @@ async function updateRunningProxySubagents(enabled: boolean): Promise<void> {
     if (!response.ok) {
         const detail = await response.text();
         throw new Error(`Running proxy rejected subagent update (${response.status}): ${detail}`);
+    }
+}
+
+async function getRunningProxyTunnel(): Promise<TunnelState> {
+    const response = await fetch(`http://localhost:${PROXY_PORT}/api/tunnel`, {
+        signal: AbortSignal.timeout(30000),
+    });
+    if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`Running proxy rejected tunnel status request (${response.status}): ${detail}`);
+    }
+    return await response.json() as TunnelState;
+}
+
+async function waitForRunningProxyTunnelUrl(timeoutMs = 30000): Promise<string | null> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const tunnel = await getRunningProxyTunnel();
+        if (tunnel.status === 'running' && tunnel.url) return tunnel.url;
+        if (tunnel.status === 'error' || tunnel.status === 'stopped') return null;
+        await sleep(500);
+    }
+    return null;
+}
+
+async function waitForLocalTunnelUrl(timeoutMs = 30000): Promise<string | null> {
+    const current = getTunnelState();
+    if (current.status === 'running' && current.url) return current.url;
+    if (current.status === 'error' || current.status === 'stopped') return null;
+
+    return await new Promise(resolve => {
+        let unsubscribe: (() => void) | null = null;
+        let settled = false;
+        const finish = (url: string | null) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            unsubscribe?.();
+            resolve(url);
+        };
+        const timer = setTimeout(() => finish(null), timeoutMs);
+        unsubscribe = subscribeTunnel(tunnel => {
+            if (tunnel.status === 'running' && tunnel.url) finish(tunnel.url);
+            if (tunnel.status === 'error' || tunnel.status === 'stopped') finish(null);
+        });
+        if (settled) unsubscribe();
+    });
+}
+
+async function printAndCopyTunnelEndpoint(publicUrl: string): Promise<void> {
+    const apiUrl = buildTunnelApiUrl(publicUrl);
+    console.log(`${CYAN}🌐 Cursor tunnel endpoint: ${apiUrl}${RESET}`);
+    if (await copyTextToClipboard(apiUrl)) {
+        console.log(`${GREEN}📋 Copied the tunnel endpoint to your clipboard${RESET}`);
+    } else {
+        console.warn(`${YELLOW}⚠️  Could not copy automatically; copy the endpoint above manually${RESET}`);
     }
 }
 
@@ -206,6 +263,19 @@ async function main() {
             await updateRunningProxyTunnel(startupOptions.tunnelAction);
             console.log(`${GREEN}✅ Updated the running proxy tunnel${RESET}`);
         }
+        try {
+            if (startupOptions.tunnelAction?.enabled) {
+                const tunnelUrl = await waitForRunningProxyTunnelUrl();
+                if (tunnelUrl) await printAndCopyTunnelEndpoint(tunnelUrl);
+            } else if (!startupOptions.tunnelAction) {
+                const tunnel = await getRunningProxyTunnel();
+                if (tunnel.status === 'running' && tunnel.url) {
+                    await printAndCopyTunnelEndpoint(tunnel.url);
+                }
+            }
+        } catch (err: any) {
+            console.warn(`${YELLOW}⚠️  Could not retrieve the public tunnel URL: ${err?.message || err}${RESET}`);
+        }
         console.log(`\n${CYAN}🎉 Everything is running! Configure Cursor to use: http://localhost:${PROXY_PORT}/v1${RESET}`);
         // Keep alive if we started copilot-api
         if (copilotProc) await copilotProc.exited;
@@ -221,6 +291,12 @@ async function main() {
         try {
             await startTunnel(startupOptions.tunnelProvider);
             console.log(`${GREEN}✅ Tunnel process started (${startupOptions.tunnelProvider})${RESET}`);
+            const tunnelUrl = await waitForLocalTunnelUrl();
+            if (tunnelUrl) {
+                await printAndCopyTunnelEndpoint(tunnelUrl);
+            } else {
+                console.warn(`${YELLOW}⚠️  Tunnel started, but its public URL is not ready yet${RESET}`);
+            }
         } catch (err: any) {
             console.error(`${RED}❌ Tunnel failed to start: ${err?.message || err}${RESET}`);
         }
