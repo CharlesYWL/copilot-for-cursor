@@ -9,6 +9,8 @@ import { compactIfNeeded, isMaxMode, setMaxModeEnabled } from './max-mode';
 import { needsResponsesAPI, resolveUpstreamModelId } from './model-routing';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
 import { isTunnelProvider, loadProxySettings, saveProxySettings } from './settings-config';
+import { isTrustedManagementRequest } from './management-access';
+import { buildUpstreamUrl } from './upstream-url';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -78,6 +80,7 @@ function queueSettingsMutation<T>(mutation: () => Promise<T>): Promise<T> {
 }
 
 Bun.serve({
+  hostname: "127.0.0.1",
   port: PORT,
   idleTimeout: 255,
   async fetch(req) {
@@ -101,6 +104,15 @@ Bun.serve({
       } catch (e) {
         console.error(`❌ Failed to read dashboard at ${dashboardPath}:`, e);
         return new Response("Dashboard not found.", { status: 404 });
+      }
+    }
+
+    if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+      if (!isTrustedManagementRequest(req)) {
+        return Response.json(
+          { error: "Management API is only accessible from localhost." },
+          { status: 403, headers: { "Cache-Control": "no-store" } },
+        );
       }
     }
 
@@ -154,7 +166,7 @@ Bun.serve({
     }
 
     // ── API Key management endpoints ──────────────────────────────────
-    const corsHeaders = { "Access-Control-Allow-Origin": "*" };
+    const corsHeaders = {};
 
     if (url.pathname === "/api/keys" && req.method === "GET") {
         const config = loadAuthConfig();
@@ -484,7 +496,7 @@ Bun.serve({
     }
 
     // ── Proxy logic ───────────────────────────────────────────────────────
-    const targetUrl = new URL(url.pathname + url.search, TARGET_URL);
+    const targetUrl = buildUpstreamUrl(url, TARGET_URL);
 
     if (req.method === "OPTIONS") {
       return new Response(null, {
