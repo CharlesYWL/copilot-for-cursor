@@ -66,6 +66,8 @@ npx copilot-for-cursor --no-tunnel
 
 `--tunnel` defaults to `cloudflared`. CLI tunnel flags affect the current run; use the dashboard or live settings API to persist auto-start.
 
+> The tunnel exposes the model API, not the management API. Dashboard and `/api/*` management endpoints are intentionally limited to loopback access.
+
 ### Or start a tunnel after launch
 
 Cursor requires HTTPS. You have two options:
