@@ -109,7 +109,7 @@ Bun.serve({
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
       if (!isTrustedManagementRequest(req)) {
         return Response.json(
-          { error: "Management API is only available from the local dashboard." },
+          { error: "Management API is only accessible from localhost." },
           { status: 403, headers: { "Cache-Control": "no-store" } },
         );
       }

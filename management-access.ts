@@ -6,7 +6,10 @@ function isLocalHostname(hostname: string): boolean {
     const octets = hostname.split('.');
     return octets.length === 4
         && octets[0] === '127'
-        && octets.every(octet => /^\d{1,3}$/.test(octet) && Number(octet) <= 255);
+        && octets.every(octet => {
+            const value = Number(octet);
+            return /^\d{1,3}$/.test(octet) && value >= 0 && value <= 255;
+        });
 }
 
 function isLocalUrl(value: string): boolean {
