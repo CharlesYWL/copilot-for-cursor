@@ -10,6 +10,7 @@ import { needsResponsesAPI, resolveUpstreamModelId } from './model-routing';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
 import { isTunnelProvider, loadProxySettings, saveProxySettings } from './settings-config';
 import { isTrustedManagementRequest } from './management-access';
+import { buildUpstreamUrl } from './upstream-url';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -495,7 +496,7 @@ Bun.serve({
     }
 
     // ── Proxy logic ───────────────────────────────────────────────────────
-    const targetUrl = new URL(url.pathname + url.search, TARGET_URL);
+    const targetUrl = buildUpstreamUrl(url, TARGET_URL);
 
     if (req.method === "OPTIONS") {
       return new Response(null, {
