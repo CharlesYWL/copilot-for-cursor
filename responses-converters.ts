@@ -1,3 +1,34 @@
+const CURSOR_SUBAGENT_TOOLS = new Set(['subagent', 'task']);
+
+export function sanitizeCursorSubagentArguments(toolName: unknown, argumentsJson: unknown): unknown {
+    if (
+        typeof toolName !== 'string'
+        || !CURSOR_SUBAGENT_TOOLS.has(toolName.toLowerCase())
+        || typeof argumentsJson !== 'string'
+    ) {
+        return argumentsJson;
+    }
+
+    try {
+        const args = JSON.parse(argumentsJson);
+        if (
+            typeof args === 'object'
+            && args !== null
+            && !Array.isArray(args)
+            && args.environment !== 'cloud'
+            && Object.prototype.hasOwnProperty.call(args, 'cloud_base_branch')
+        ) {
+            delete args.cloud_base_branch;
+            console.log(`🧹 Removed cloud_base_branch from local ${toolName} call`);
+            return JSON.stringify(args);
+        }
+    } catch {
+        return argumentsJson;
+    }
+
+    return argumentsJson;
+}
+
 export function convertResponsesSyncToChatCompletions(data: any, model: string, chatId: string, corsHeaders: any) {
     const result: any = {
         id: chatId,
@@ -25,7 +56,10 @@ export function convertResponsesSyncToChatCompletions(data: any, model: string, 
             toolCalls.push({
                 id: item.call_id || item.id,
                 type: 'function',
-                function: { name: item.name, arguments: item.arguments },
+                function: {
+                    name: item.name,
+                    arguments: sanitizeCursorSubagentArguments(item.name, item.arguments),
+                },
             });
         }
     }
@@ -61,6 +95,12 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
     let toolCallIndex = 0;
     let sentRole = false;
     let chunkCount = 0;
+    const toolCallsByOutputIndex = new Map<number, {
+        chatIndex: number;
+        name: string;
+        arguments: string;
+        argumentsEmitted: boolean;
+    }>();
 
     const makeChatChunk = (delta: any, finishReason: string | null = null) => {
         const chunk: any = {
@@ -72,6 +112,29 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
         };
         return `data: ${JSON.stringify(chunk)}\n\n`;
     };
+
+    function emitToolArguments(
+        outputIndex: number,
+        controller: ReadableStreamDefaultController,
+        completeArguments?: unknown,
+    ) {
+        const state = toolCallsByOutputIndex.get(outputIndex);
+        if (!state || state.argumentsEmitted) return;
+
+        const argumentsJson = typeof completeArguments === 'string'
+            ? completeArguments
+            : state.arguments;
+        controller.enqueue(encoder.encode(makeChatChunk({
+            tool_calls: [{
+                index: state.chatIndex,
+                function: {
+                    arguments: sanitizeCursorSubagentArguments(state.name, argumentsJson),
+                },
+            }]
+        })));
+        state.argumentsEmitted = true;
+        chunkCount++;
+    }
 
     function processLines(lines: string[], controller: ReadableStreamDefaultController) {
         for (const line of lines) {
@@ -92,9 +155,19 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
             }
 
             else if (eventType === 'response.output_item.added' && event.item?.type === 'function_call') {
+                const outputIndex = typeof event.output_index === 'number'
+                    ? event.output_index
+                    : toolCallIndex;
+                const chatIndex = toolCallIndex++;
+                toolCallsByOutputIndex.set(outputIndex, {
+                    chatIndex,
+                    name: event.item.name,
+                    arguments: '',
+                    argumentsEmitted: false,
+                });
                 const delta: any = {
                     tool_calls: [{
-                        index: toolCallIndex++,
+                        index: chatIndex,
                         id: event.item.call_id || event.item.id,
                         type: 'function',
                         function: { name: event.item.name, arguments: '' },
@@ -106,21 +179,33 @@ export function convertResponsesStreamToChatCompletions(response: Response, mode
             }
 
             else if (eventType === 'response.function_call_arguments.delta') {
-                if (toolCallIndex < 1) continue; // Guard against out-of-order events
-                controller.enqueue(encoder.encode(makeChatChunk({
-                    tool_calls: [{
-                        index: toolCallIndex - 1,
-                        function: { arguments: event.delta },
-                    }]
-                })));
-                chunkCount++;
+                const outputIndex = typeof event.output_index === 'number'
+                    ? event.output_index
+                    : toolCallIndex - 1;
+                const state = toolCallsByOutputIndex.get(outputIndex);
+                if (state && typeof event.delta === 'string') {
+                    state.arguments += event.delta;
+                }
+            }
+
+            else if (eventType === 'response.function_call_arguments.done') {
+                const outputIndex = typeof event.output_index === 'number'
+                    ? event.output_index
+                    : toolCallIndex - 1;
+                emitToolArguments(outputIndex, controller, event.arguments);
             }
 
             else if (eventType === 'response.output_item.done' && event.item?.type === 'function_call') {
-                // toolCallIndex already incremented on 'added'
+                const outputIndex = typeof event.output_index === 'number'
+                    ? event.output_index
+                    : toolCallIndex - 1;
+                emitToolArguments(outputIndex, controller, event.item.arguments);
             }
 
             else if (eventType === 'response.completed') {
+                for (const outputIndex of toolCallsByOutputIndex.keys()) {
+                    emitToolArguments(outputIndex, controller);
+                }
                 const hasToolCalls = (event.response?.output || []).some((o: any) => o.type === 'function_call');
                 const finishReason = hasToolCalls ? 'tool_calls' : 'stop';
                 controller.enqueue(encoder.encode(makeChatChunk({}, finishReason)));

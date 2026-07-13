@@ -38,16 +38,6 @@ bun run start.ts --max
 
 > **🛡️ Always-on safety net:** Even without `--max`, the proxy now auto-compacts at **95%** of the model's input limit and falls back to hard truncation of the oldest messages if summarization fails. This prevents Cursor from ever hitting upstream `context_length_exceeded` errors. Use `--max` if you want proactive (80%) compaction for smoother long sessions.
 
-### Disable BYOK subagents
-
-Cursor can continue exposing its generic `Subagent`/`Task` tools even when the Explore subagent is disabled. To hard-disable provider-side subagent calls:
-
-```bash
-npx copilot-for-cursor --no-subagents
-```
-
-Use `--subagents` to override a persisted disabled setting for one run. The dashboard and live settings API can persist the preference.
-
 ### Start with an HTTPS tunnel
 
 Start the stack and a Cloudflare Quick Tunnel in one command:
@@ -133,6 +123,12 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 
 > **💡 Tip:** Visit the [Dashboard](http://localhost:4142) to see all available models and copy their IDs.
 
+Cursor exposes **Settings → Models → Task Models → Explore Subagent Model**, where a `cus-*` model can be selected:
+
+![Cursor Explore Subagent Model setting](./cursor-explore-subagent-model.png)
+
+> **Known Cursor limitation:** With custom/BYOK models, Cursor may ignore this selection and send the child request with the parent agent's model. The proxy does not force both models to match; it forwards the model ID Cursor sends. Same-model subagents work reliably, while selecting a different Explore model may still inherit the parent model.
+
 ### Currently Available Models
 
 The following catalog was returned by GitHub Copilot on July 9, 2026. Availability can change by account, organization policy, and upstream rollout; the dashboard and `/v1/models` endpoint are authoritative.
@@ -197,8 +193,8 @@ Embedding-only models also listed by the upstream API are `cus-text-embedding-3-
 *   **🔍 Search:** `Grep`, `Glob`, `SemanticSearch`
 *   **🔌 MCP Tools:** External tools (Neon, Playwright, etc.)
 *   **🗜️ Max Mode:** Auto-compact long conversations to stay within token limits (`--max`)
-*   **🚫 BYOK Subagent Guard:** Optionally removes `Subagent` and `Task` before provider requests
-*   **⚙️ Live Settings:** Agents can update max mode, subagent policy, API-key enforcement, and tunnel state without restarting
+*   **🤖 BYOK Subagents:** Passes `Subagent` and `Task` tools through; local GPT Responses calls remove the invalid cloud-only `cloud_base_branch` argument
+*   **⚙️ Live Settings:** Agents can update max mode, API-key enforcement, and tunnel state without restarting
 
 ---
 
@@ -215,7 +211,7 @@ Start a Cloudflare tunnel immediately, remember the provider, and enable tunnel 
 ```bash
 curl -X PATCH http://localhost:4142/api/settings \
   -H "Content-Type: application/json" \
-  -d '{"maxMode":true,"subagents":{"enabled":false},"tunnel":{"enabled":true,"autoStart":true,"provider":"cloudflared"}}'
+  -d '{"maxMode":true,"tunnel":{"enabled":true,"autoStart":true,"provider":"cloudflared"}}'
 ```
 
 Stop the current tunnel without changing its saved auto-start preference:
@@ -231,8 +227,6 @@ Available fields:
 | Field | Type | Behavior |
 |---|---|---|
 | `maxMode` | boolean | Enables/disables proactive 80% conversation compaction immediately and persists it |
-| `subagents.enabled` | boolean | When false, removes `Subagent` and `Task` before forwarding requests |
-| `subagents.persist` | boolean | Optional; set false for a runtime-only override (defaults to true) |
 | `requireApiKey` | boolean | Enables/disables API-key enforcement for `/v1/*` requests |
 | `tunnel.enabled` | boolean | Starts or stops the tunnel immediately |
 | `tunnel.autoStart` | boolean | Starts the saved tunnel provider on future launches |
@@ -273,7 +267,7 @@ When enabled, all `/v1/*` requests must include `Authorization: Bearer <your-key
 Access the dashboard at **[http://localhost:4142](http://localhost:4142)**
 
 Four tabs:
-- **Endpoint** — Proxy URL, API keys, BYOK subagent policy, model list
+- **Endpoint** — Proxy URL, API keys, model list
 - **Usage** — Request stats, token counts, per-model breakdown, recent requests
 - **Tunnel** — Provider selection, live tunnel status, and auto-start preference
 - **Console Log** — Real-time proxy logs with color-coded levels
@@ -292,7 +286,8 @@ Four tabs:
 | Max mode (long session compaction) | ✅ Works (`--max` flag) |
 | Live settings API | ✅ Works (`GET/PATCH /api/settings`) |
 | Tunnel auto-start | ✅ Works (`--tunnel` or persisted dashboard/API setting) |
-| BYOK subagent hard-disable | ✅ Works (`--no-subagents` or `subagents.enabled=false`) |
+| BYOK subagents using the parent model | ✅ Works |
+| Separate Explore Subagent Model with custom/BYOK models | ⚠️ Cursor may ignore the selection and inherit the parent model |
 | Extended thinking (chain-of-thought) | ❌ Stripped |
 | Prompt caching (`cache_control`) | ❌ Stripped |
 | Claude Vision | ❌ Not supported via Copilot |
@@ -311,22 +306,8 @@ Ensure `idleTimeout: 255` is set in `proxy-router.ts` (already configured). Slow
 **GPT-5.x returns "use /v1/responses":**
 The proxy auto-routes these. Make sure you're running the latest version.
 
-**Cursor starts "New Subagent" even after Explore is disabled:**
-Cursor's setting disables the Explore subagent, but it does not reliably remove the generic `Subagent` tool. Cursor staff also confirms spawned subagents do not inherit BYOK/custom base URLs. Disable them at the proxy layer:
-
-```bash
-npx copilot-for-cursor --no-subagents
-```
-
-Or update a running proxy:
-
-```bash
-curl -X PATCH http://localhost:4142/api/settings \
-  -H "Content-Type: application/json" \
-  -d '{"subagents":{"enabled":false}}'
-```
-
-References: [Cursor 3.3 changelog](https://cursor.com/changelog/05-07-26), [Cursor BYOK subagent limitation](https://forum.cursor.com/t/subagents-ignore-users-own-api-key-always-bill-against-cursor-plan/152971/3), and the [`cloud_base_branch` compatibility issue](https://github.com/decolua/9router/issues/2446).
+**Explore subagent uses the same model as the parent:**
+This is a Cursor-side limitation observed with custom/BYOK models. Even when a different `cus-*` model is selected under **Settings → Models → Task Models → Explore Subagent Model**, Cursor may send the child request with the parent model ID. The proxy cannot recover the ignored selection because it is not included in the request.
 
 **"connection refused":**
 Ensure services are running: `bun run start.ts` or check `http://localhost:4142`.

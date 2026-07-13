@@ -9,12 +9,6 @@ import { compactIfNeeded, isMaxMode, setMaxModeEnabled } from './max-mode';
 import { needsResponsesAPI, resolveUpstreamModelId } from './model-routing';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
 import { isTunnelProvider, loadProxySettings, saveProxySettings } from './settings-config';
-import {
-  applySubagentPolicy,
-  initializeSubagentsEnabled,
-  isSubagentsEnabled,
-  setSubagentsEnabled,
-} from './subagent-policy';
 import { isTrustedManagementRequest } from './management-access';
 import { buildUpstreamUrl } from './upstream-url';
 import { existsSync } from 'fs';
@@ -55,7 +49,6 @@ const PORT = 4142;
 const TARGET_URL = "http://localhost:4141";
 const PREFIX = "cus-";
 let responseCounter = 0;
-initializeSubagentsEnabled(loadProxySettings().subagents.enabled);
 
 console.log(`🚀 Proxy Router running on http://localhost:${PORT}`);
 console.log(`🔗 Forwarding to ${TARGET_URL}`);
@@ -67,9 +60,6 @@ function getLiveSettings() {
   const tunnelState = getTunnelState();
   return {
     maxMode: isMaxMode(),
-    subagents: {
-      enabled: isSubagentsEnabled(),
-    },
     requireApiKey: auth.requireApiKey,
     tunnel: {
       ...tunnelState,
@@ -277,7 +267,7 @@ Bun.serve({
             return Response.json({ error: 'Request body must be a JSON object' }, { status: 400, headers: corsHeaders });
         }
         const unknownSettingsFields = Object.keys(body).filter(
-            key => !['maxMode', 'subagents', 'requireApiKey', 'tunnel'].includes(key),
+            key => !['maxMode', 'requireApiKey', 'tunnel'].includes(key),
         );
         if (unknownSettingsFields.length > 0) {
             return Response.json(
@@ -290,7 +280,6 @@ Bun.serve({
           return await queueSettingsMutation(async () => {
             const patch = body as {
                 maxMode?: unknown;
-                subagents?: unknown;
                 requireApiKey?: unknown;
                 tunnel?: unknown;
             };
@@ -302,32 +291,6 @@ Bun.serve({
             }
 
             const settings = loadProxySettings();
-            let nextSubagentsEnabled: boolean | undefined;
-            let persistSubagents = true;
-
-            if (patch.subagents !== undefined) {
-                if (typeof patch.subagents !== 'object' || patch.subagents === null || Array.isArray(patch.subagents)) {
-                    return Response.json({ error: '`subagents` must be an object' }, { status: 400, headers: corsHeaders });
-                }
-                const candidate = patch.subagents as Record<string, unknown>;
-                const unknownSubagentFields = Object.keys(candidate).filter(
-                    key => !['enabled', 'persist'].includes(key),
-                );
-                if (unknownSubagentFields.length > 0) {
-                    return Response.json(
-                        { error: `Unknown subagent field(s): ${unknownSubagentFields.join(', ')}` },
-                        { status: 400, headers: corsHeaders },
-                    );
-                }
-                if (typeof candidate.enabled !== 'boolean') {
-                    return Response.json({ error: '`subagents.enabled` must be a boolean' }, { status: 400, headers: corsHeaders });
-                }
-                if (candidate.persist !== undefined && typeof candidate.persist !== 'boolean') {
-                    return Response.json({ error: '`subagents.persist` must be a boolean' }, { status: 400, headers: corsHeaders });
-                }
-                nextSubagentsEnabled = candidate.enabled;
-                persistSubagents = candidate.persist !== false;
-            }
 
             if (patch.tunnel !== undefined) {
                 if (typeof patch.tunnel !== 'object' || patch.tunnel === null || Array.isArray(patch.tunnel)) {
@@ -385,9 +348,6 @@ Bun.serve({
             if (patch.maxMode !== undefined) {
                 settings.maxMode = patch.maxMode;
             }
-            if (nextSubagentsEnabled !== undefined && persistSubagents) {
-                settings.subagents.enabled = nextSubagentsEnabled;
-            }
             if (patch.requireApiKey !== undefined) {
                 const auth = loadAuthConfig();
                 auth.requireApiKey = patch.requireApiKey;
@@ -396,9 +356,6 @@ Bun.serve({
             saveProxySettings(settings);
             if (patch.maxMode !== undefined) {
                 setMaxModeEnabled(patch.maxMode);
-            }
-            if (nextSubagentsEnabled !== undefined) {
-                setSubagentsEnabled(nextSubagentsEnabled);
             }
             return Response.json(getLiveSettings(), { headers: corsHeaders });
           });
@@ -577,10 +534,6 @@ Bun.serve({
       // /v1/responses, returning the body untouched (including SSE streams).
       if (req.method === "POST" && url.pathname.endsWith("/responses")) {
         let json = await req.json();
-        const removedTools = applySubagentPolicy(json);
-        if (removedTools.length > 0) {
-          console.log(`🚫 Subagents disabled — filtered tools: ${removedTools.join(', ')}`);
-        }
         const originalModel = json.model;
         if (json.model && typeof json.model === 'string' && json.model.startsWith(PREFIX)) {
           json.model = json.model.slice(PREFIX.length);
@@ -619,10 +572,6 @@ Bun.serve({
         let json = await req.json();
 
         logIncomingRequest(json);
-        const removedTools = applySubagentPolicy(json);
-        if (removedTools.length > 0) {
-          console.log(`🚫 Subagents disabled — filtered tools: ${removedTools.join(', ')}`);
-        }
 
         const originalModel = json.model;
         let targetModel = json.model;
