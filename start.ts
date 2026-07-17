@@ -6,7 +6,7 @@
 
 import { spawn, sleep } from 'bun';
 import { existsSync } from 'fs';
-import { getUpstreamAuthHeader } from './upstream-auth';
+import { getUpstreamAuthHeader, hasGitHubToken } from './upstream-auth';
 import { isMaxMode, setMaxModeEnabled, fetchAndCacheModelLimits } from './max-mode';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelState } from './tunnel';
 import { buildTunnelApiUrl, copyTextToClipboard } from './tunnel-endpoint';
@@ -145,6 +145,38 @@ const openInBrowser = (url: string): void => {
     }
 };
 
+async function ensureCopilotAuthentication(npxCmd: string): Promise<void> {
+    if (hasGitHubToken()) return;
+
+    const loginUrl = 'https://github.com/login/device';
+    console.log(
+        `${YELLOW}🔐 First-time GitHub authentication required.${RESET}\n` +
+        `${YELLOW}   Opening ${loginUrl}; enter the code shown below.${RESET}\n`
+    );
+    openInBrowser(loginUrl);
+
+    const authProc = spawn([
+        npxCmd,
+        '@jeffreycao/copilot-api@latest',
+        'auth',
+        'login',
+        '--provider',
+        'copilot',
+    ], {
+        stdin: 'inherit',
+        stdout: 'inherit',
+        stderr: 'inherit',
+    });
+    const exitCode = await authProc.exited;
+    if (exitCode !== 0) {
+        throw new Error(`GitHub authentication exited with code ${exitCode}`);
+    }
+    if (!hasGitHubToken()) {
+        throw new Error('GitHub authentication completed without writing a token');
+    }
+    console.log(`${GREEN}✅ GitHub authentication complete${RESET}\n`);
+}
+
 async function main() {
     console.log(`${CYAN}🚀 Starting Copilot Proxy Stack...${RESET}\n`);
     const startupOptions = parseStartupOptions(args, loadProxySettings());
@@ -162,6 +194,8 @@ async function main() {
         // Detect npx path
         const isWindows = process.platform === 'win32';
         const npxCmd = isWindows ? 'npx.cmd' : 'npx';
+
+        await ensureCopilotAuthentication(npxCmd);
 
         copilotProc = spawn([npxCmd, '@jeffreycao/copilot-api@latest', 'start'], {
             stdout: 'pipe',

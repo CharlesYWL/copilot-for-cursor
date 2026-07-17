@@ -16,7 +16,9 @@ Use **all** Copilot models (GPT-5.6, Claude Opus 4.8, Gemini 3.5, etc.) in Curso
 npx copilot-for-cursor
 ```
 
-> Requires [Bun](https://bun.sh/) installed. First run will prompt GitHub authentication.
+> Requires [Bun](https://bun.sh/) installed. On first run, the launcher opens
+> GitHub's device-login page and runs the provider-specific authentication flow
+> before starting the proxy stack.
 
 This starts both `copilot-api` (port 4141) and the proxy (port 4142) in a single terminal.
 
@@ -313,15 +315,15 @@ This is a Cursor-side limitation observed with custom/BYOK models. Even when a d
 Ensure services are running: `bun run start.ts` or check `http://localhost:4142`.
 
 **GitHub auth never completes / "copilot-api failed to start":**
-On first run, `copilot-api` uses GitHub's device-code flow and prints a line like
-`Please enter the code "XXXX-XXXX" in https://github.com/login/device`. The launcher
-now auto-opens the browser and waits up to 10 minutes for you to finish. If that
-fails (firewall, corporate proxy, SSO redirect, etc.), authenticate directly against
-`@jeffreycao/copilot-api` and then re-run this tool:
+On first run, the launcher runs `copilot-api auth login --provider copilot` with
+terminal access, opens GitHub's device-login page, and waits for authentication
+to finish before starting `copilot-api`. This avoids TTY failures from the
+upstream provider-selection prompt. If authentication still fails (firewall,
+corporate proxy, SSO redirect, etc.), run it directly and then restart:
 
 ```bash
 # Run the device-code flow explicitly — this caches the token locally.
-npx @jeffreycao/copilot-api@latest auth
+npx @jeffreycao/copilot-api@latest auth login --provider copilot
 
 # Then start the stack normally:
 bun run start.ts
