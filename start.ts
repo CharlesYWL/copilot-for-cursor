@@ -6,7 +6,8 @@
 
 import { spawn, sleep } from 'bun';
 import { existsSync } from 'fs';
-import { getUpstreamAuthHeader } from './upstream-auth';
+import { createRequire } from 'module';
+import { getUpstreamAuthHeader, hasGitHubToken } from './upstream-auth';
 import { isMaxMode, setMaxModeEnabled, fetchAndCacheModelLimits } from './max-mode';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelState } from './tunnel';
 import { buildTunnelApiUrl, copyTextToClipboard } from './tunnel-endpoint';
@@ -15,6 +16,9 @@ import { parseStartupOptions, type TunnelStartupAction } from './startup-options
 
 // ── Parse CLI flags ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
+const require = createRequire(import.meta.url);
+const nodeExecutable = process.env.COPILOT_FOR_CURSOR_NODE || (process.platform === 'win32' ? 'node.exe' : 'node');
+let copilotApiEntrypoint: string | null = null;
 
 const COPILOT_API_PORT = 4141;
 const PROXY_PORT = 4142;
@@ -25,6 +29,17 @@ const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
 const CYAN = '\x1b[36m';
 const RESET = '\x1b[0m';
+
+function copilotApiCommand(...args: string[]): string[] {
+    try {
+        copilotApiEntrypoint ??= require.resolve('@jeffreycao/copilot-api/dist/main.js');
+    } catch {
+        throw new Error(
+            'The copilot-api dependency is missing. Reinstall with: npm install -g copilot-for-cursor@latest'
+        );
+    }
+    return [nodeExecutable, copilotApiEntrypoint, ...args];
+}
 
 async function updateRunningProxyTunnel(action: TunnelStartupAction): Promise<void> {
     const response = await fetch(`http://localhost:${PROXY_PORT}/api/tunnel`, {
@@ -145,7 +160,45 @@ const openInBrowser = (url: string): void => {
     }
 };
 
+async function runCopilotAuthentication(): Promise<void> {
+    const loginUrl = 'https://github.com/login/device';
+    console.log(
+        `${YELLOW}🔐 GitHub authentication required.${RESET}\n` +
+        `${YELLOW}   Opening ${loginUrl}; enter the code shown below.${RESET}\n`
+    );
+    openInBrowser(loginUrl);
+
+    const authProc = spawn(copilotApiCommand(
+        'auth',
+        'login',
+        '--provider',
+        'copilot',
+    ), {
+        stdin: 'inherit',
+        stdout: 'inherit',
+        stderr: 'inherit',
+    });
+    const exitCode = await authProc.exited;
+    if (exitCode !== 0) {
+        throw new Error(`GitHub authentication exited with code ${exitCode}`);
+    }
+    if (!hasGitHubToken()) {
+        throw new Error('GitHub authentication completed without writing a token');
+    }
+    console.log(`${GREEN}✅ GitHub authentication complete${RESET}\n`);
+}
+
+async function ensureCopilotAuthentication(): Promise<void> {
+    if (hasGitHubToken()) return;
+    await runCopilotAuthentication();
+}
+
 async function main() {
+    if (args[0] === 'auth') {
+        await runCopilotAuthentication();
+        return;
+    }
+
     console.log(`${CYAN}🚀 Starting Copilot Proxy Stack...${RESET}\n`);
     const startupOptions = parseStartupOptions(args, loadProxySettings());
     setMaxModeEnabled(startupOptions.maxMode);
@@ -159,11 +212,9 @@ async function main() {
     } else {
         console.log(`${YELLOW}⏳ Starting copilot-api on port ${COPILOT_API_PORT}...${RESET}`);
 
-        // Detect npx path
-        const isWindows = process.platform === 'win32';
-        const npxCmd = isWindows ? 'npx.cmd' : 'npx';
+        await ensureCopilotAuthentication();
 
-        copilotProc = spawn([npxCmd, '@jeffreycao/copilot-api@latest', 'start'], {
+        copilotProc = spawn(copilotApiCommand('start'), {
             stdout: 'pipe',
             stderr: 'pipe',
         });
@@ -218,7 +269,7 @@ async function main() {
             console.error(
                 `${RED}❌ copilot-api failed to start.${RESET}\n` +
                 `${YELLOW}   If this is your first run, try authenticating separately:${RESET}\n` +
-                `${YELLOW}     npx @jeffreycao/copilot-api@latest auth${RESET}\n` +
+                `${YELLOW}     copilot-for-cursor auth${RESET}\n` +
                 `${YELLOW}   Then re-run this command.${RESET}`
             );
             copilotProc.kill();

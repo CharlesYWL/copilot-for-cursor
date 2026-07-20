@@ -12,6 +12,24 @@ interface CopilotApiConfig {
 
 let cachedKey: string | null = null;
 
+export function getGitHubTokenPath(
+    env: NodeJS.ProcessEnv = process.env,
+    homeDir = homedir(),
+): string {
+    const dataDir = env.COPILOT_API_HOME || join(homeDir, '.local', 'share', 'copilot-api');
+    const authApp = env.COPILOT_API_OAUTH_APP?.trim() || '';
+    const enterprisePrefix = env.COPILOT_API_ENTERPRISE_URL ? 'ent_' : '';
+    return join(dataDir, authApp, `${enterprisePrefix}github_token`);
+}
+
+export function hasGitHubToken(tokenPath = getGitHubTokenPath()): boolean {
+    try {
+        return existsSync(tokenPath) && readFileSync(tokenPath, 'utf-8').trim().length > 0;
+    } catch {
+        return false;
+    }
+}
+
 function getConfigPath(): string {
     const dataDir = process.env.COPILOT_API_HOME || DEFAULT_DATA_DIR;
     return join(dataDir, 'config.json');
