@@ -231,4 +231,24 @@ describe('normalizeRequest — tool call IDs', () => {
         expect(json.messages[0].tool_calls[0].id).toMatch(/^[a-zA-Z0-9_-]+$/);
         expect(json.messages[1].tool_call_id).toBe(json.messages[0].tool_calls[0].id);
     });
+
+    it('forwards messages whose tool call id is missing instead of throwing', () => {
+        const json = {
+            messages: [
+                { role: 'user', content: 'hi' },
+                { role: 'tool', content: 'orphaned result' },
+                {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [{ type: 'function', function: { name: 'Read', arguments: '{}' } }],
+                },
+            ],
+        };
+
+        expect(() => normalizeRequest(json, true)).not.toThrow();
+
+        const toolMsg = json.messages.find((m: any) => m.role === 'tool');
+        expect(toolMsg!.tool_call_id).toBeUndefined();
+        expect(toolMsg!.content).toBe('orphaned result');
+    });
 });
