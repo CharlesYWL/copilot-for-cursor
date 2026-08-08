@@ -93,11 +93,11 @@ npx copilot-for-cursor@latest --no-tunnel
 
 ### Or start a tunnel after launch
 
-Cursor requires HTTPS. You have two options:
+Cursor needs a publicly reachable endpoint rather than `localhost`. You have two options:
 
 **Option A — One-click tunnel (recommended)**
 
-Open the dashboard at `http://localhost:4142/`, go to the **Tunnel** tab, pick a provider (Cloudflare, ngrok, or bore) and click **Start Tunnel**. The public URL, QR code, and Cursor endpoint will appear instantly. Cloudflare is pre-installed automatically — no signup, no config.
+Open the dashboard at `http://localhost:4142/`, go to the **Tunnel** tab, pick a provider (Cloudflare, ngrok, or bore) and click **Start Tunnel**. The public URL, QR code, and Cursor endpoint will appear instantly. Cloudflare and bore are downloaded automatically — no signup, no config.
 
 **Option B — Run a tunnel manually**
 
@@ -107,22 +107,27 @@ cloudflared tunnel --url http://localhost:4142
 
 # Or ngrok
 ngrok http 4142
+
+# Or bore (no signup)
+bore local 4142 --to bore.pub
 ```
 
-Copy the HTTPS URL (e.g., `https://xxxxx.trycloudflare.com`).
+Copy the resulting public URL (e.g., `https://xxxxx.trycloudflare.com` or `http://bore.pub:PORT`).
+
+> Cloudflare and ngrok give you an HTTPS URL. bore exposes plain HTTP on a `bore.pub` port, which also works — reach for it when Cloudflare's account-less Quick Tunnels are rate limited (`error code: 1015`).
 
 ---
 
 ## 🏗 Architecture
 
 ```text
-Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → GitHub Copilot
+Cursor → (public tunnel) → proxy-router (:4142) → copilot-api (:4141) → GitHub Copilot
 ```
 
 *   **Port 4141 (`copilot-api`):** Authenticates with GitHub, provides the OpenAI-compatible API, and natively handles the Responses API for GPT-5.x models.
     *   *Powered by [@jeffreycao/copilot-api](https://github.com/caozhiyuan/copilot-api), installed with this package.*
 *   **Port 4142 (`proxy-router`):** Converts Anthropic-format messages to OpenAI format, bridges Responses API for GPT-5.x models, handles the `cus-` prefix, and serves the dashboard.
-*   **HTTPS tunnel:** Cursor requires HTTPS — a tunnel exposes the local proxy.
+*   **Public tunnel:** Cursor cannot reach `localhost`, so a tunnel exposes the local proxy.
 
 ### Proxy Router Modules
 
@@ -148,7 +153,7 @@ Cursor → (HTTPS tunnel) → proxy-router (:4142) → copilot-api (:4141) → G
 
 1.  Go to **Settings** (Gear Icon) → **Models**.
 2.  Add a new **OpenAI Compatible** model:
-    *   **Base URL:** `https://your-tunnel-url.trycloudflare.com/v1`
+    *   **Base URL:** your tunnel URL plus `/v1` — e.g. `https://your-tunnel-url.trycloudflare.com/v1` or `http://bore.pub:PORT/v1`
     *   **API Key:** `dummy` (any value works)
     *   **Model Name:** Use a **prefixed name** — e.g., `cus-gpt-5.6-sol`, `cus-claude-opus-4-8`
 
