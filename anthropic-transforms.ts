@@ -1,5 +1,13 @@
 import { normalizeToolCallId } from './tool-call-id';
 
+// Malformed or absent ids are left untouched: the upstream rejection is more
+// informative than a proxy-side crash, and a missing id was previously
+// forwarded as-is.
+const normalizeToolCallIdIfPresent = (value: unknown): unknown => {
+    if (typeof value !== 'string' || !value) return value;
+    return normalizeToolCallId(value);
+};
+
 const cleanSchema = (schema: any): any => {
     if (!schema || typeof schema !== 'object') return schema;
     if (schema.additionalProperties !== undefined) delete schema.additionalProperties;
@@ -206,11 +214,11 @@ const transformMessages = (json: any, isClaude: boolean): void => {
         const msg = json.messages[i];
         if (Array.isArray(msg.tool_calls)) {
             for (const toolCall of msg.tool_calls) {
-                toolCall.id = normalizeToolCallId(toolCall.id);
+                toolCall.id = normalizeToolCallIdIfPresent(toolCall.id);
             }
         }
         if (msg.role === 'tool') {
-            msg.tool_call_id = normalizeToolCallId(msg.tool_call_id);
+            msg.tool_call_id = normalizeToolCallIdIfPresent(msg.tool_call_id);
         }
         if (Array.isArray(msg.content) && msg.content.length === 0) {
             msg.content = ' ';
