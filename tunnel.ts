@@ -119,6 +119,41 @@ const resolveAssetUrlViaApi = async (assetName: string): Promise<string> => {
     return asset.browser_download_url;
 };
 
+const extractArchive = async (
+    archivePath: string,
+    destPath: string,
+    binaryName: string,
+    assetName: string,
+): Promise<void> => {
+    const extractDir = `${destPath}.extracting`;
+    try {
+        rmSync(extractDir, { recursive: true, force: true });
+        mkdirSync(extractDir, { recursive: true });
+
+        const command = assetName.endsWith('.zip')
+            ? ['unzip', '-q', '-o', archivePath, '-d', extractDir]
+            : ['tar', '-xzf', archivePath, '-C', extractDir];
+        const extractProc = spawn(command, { stdout: 'ignore', stderr: 'pipe' });
+        const stderrPromise = new Response(extractProc.stderr).text();
+        const exitCode = await extractProc.exited;
+        const stderr = (await stderrPromise).trim();
+        if (exitCode !== 0) {
+            throw new Error(`${command[0]} exited with code ${exitCode}${stderr ? `: ${stderr}` : ''}`);
+        }
+
+        const extractedBinary = join(extractDir, binaryName);
+        if (!existsSync(extractedBinary)) {
+            throw new Error(`Archive ${assetName} did not contain ${binaryName}`);
+        }
+        renameSync(extractedBinary, destPath);
+    } catch (err: any) {
+        throw new Error(`Failed to extract ${assetName}: ${err?.message ?? err}`);
+    } finally {
+        rmSync(archivePath, { force: true });
+        rmSync(extractDir, { recursive: true, force: true });
+    }
+};
+
 const ensureCloudflaredBinary = async (): Promise<string> => {
     if (!existsSync(BIN_DIR)) mkdirSync(BIN_DIR, { recursive: true });
 
@@ -161,33 +196,7 @@ const ensureCloudflaredBinary = async (): Promise<string> => {
     }
 
     if (assetName.endsWith('.tgz')) {
-        const extractDir = `${localPath}.extracting`;
-        try {
-            rmSync(extractDir, { recursive: true, force: true });
-            mkdirSync(extractDir, { recursive: true });
-
-            const extractProc = spawn(['tar', '-xzf', tmpPath, '-C', extractDir], {
-                stdout: 'ignore',
-                stderr: 'pipe',
-            });
-            const stderrPromise = new Response(extractProc.stderr).text();
-            const exitCode = await extractProc.exited;
-            const stderr = (await stderrPromise).trim();
-            if (exitCode !== 0) {
-                throw new Error(`tar exited with code ${exitCode}${stderr ? `: ${stderr}` : ''}`);
-            }
-
-            const extractedBinary = join(extractDir, filename);
-            if (!existsSync(extractedBinary)) {
-                throw new Error(`Archive ${assetName} did not contain ${filename}`);
-            }
-            renameSync(extractedBinary, localPath);
-        } catch (err: any) {
-            throw new Error(`Failed to extract ${assetName}: ${err?.message ?? err}`);
-        } finally {
-            rmSync(tmpPath, { force: true });
-            rmSync(extractDir, { recursive: true, force: true });
-        }
+        await extractArchive(tmpPath, localPath, filename, assetName);
     } else {
         renameSync(tmpPath, localPath);
     }
@@ -230,6 +239,41 @@ const streamLines = async (
         }
         if (buf.trim()) onLine(buf);
     } catch {}
+};
+
+// bore publishes per-target archives whose names embed the release version,
+// so the asset has to be resolved from the release listing rather than built
+// from a fixed `latest/download/...` URL.
+export const getBoreTargetTriple = (
+    platform: NodeJS.Platform = process.platform,
+    arch: string = process.arch,
+): string | null => {
+    if (platform === 'darwin') {
+        return arch === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin';
+    }
+    if (platform === 'linux') {
+        const tripleMap: Record<string, string> = {
+            x64: 'x86_64-unknown-linux-musl',
+            arm64: 'aarch64-unknown-linux-musl',
+            arm: 'arm-unknown-linux-musleabi',
+            ia32: 'i686-unknown-linux-musl',
+        };
+        return tripleMap[arch] ?? 'x86_64-unknown-linux-musl';
+    }
+    if (platform === 'win32') {
+        return arch === 'ia32' ? 'i686-pc-windows-msvc' : 'x86_64-pc-windows-msvc';
+    }
+    return null;
+};
+
+// Picks the archive matching this platform's target triple out of a release's
+// asset list, tolerating the version segment that varies between releases.
+export const selectBoreAsset = (
+    assetNames: string[],
+    targetTriple: string,
+): string | null => {
+    const suffix = targetTriple.includes('windows') ? '.zip' : '.tar.gz';
+    return assetNames.find(name => name.endsWith(`-${targetTriple}${suffix}`)) ?? null;
 };
 
 const startCloudflared = async (): Promise<void> => {
@@ -314,17 +358,86 @@ const startNgrok = async (authtoken?: string): Promise<void> => {
     });
 };
 
+const ensureBoreBinary = async (): Promise<string> => {
+    const filename = process.platform === 'win32' ? 'bore.exe' : 'bore';
+
+    // A user-installed bore (Homebrew, cargo, manual) takes precedence.
+    if (Bun.which(filename)) return filename;
+
+    if (!existsSync(BIN_DIR)) mkdirSync(BIN_DIR, { recursive: true });
+    const localPath = join(BIN_DIR, filename);
+    if (existsSync(localPath)) return localPath;
+
+    const targetTriple = getBoreTargetTriple();
+    if (!targetTriple) {
+        throw new Error(
+            `Automatic download not supported on ${process.platform}. Install bore manually (https://github.com/ekzhang/bore/releases) and ensure 'bore' is on PATH.`
+        );
+    }
+
+    let assetName: string;
+    let assetUrl: string;
+    try {
+        const resp = await fetch('https://api.github.com/repos/ekzhang/bore/releases/latest', {
+            redirect: 'follow',
+            headers: { ...DOWNLOAD_HEADERS, Accept: 'application/vnd.github+json' },
+        });
+        if (!resp.ok) {
+            throw new Error(`GitHub API returned ${resp.status} ${resp.statusText}`);
+        }
+        const release = (await resp.json()) as {
+            assets?: Array<{ name: string; browser_download_url: string }>;
+        };
+        const assets = release.assets ?? [];
+        const selected = selectBoreAsset(assets.map(a => a.name), targetTriple);
+        if (!selected) {
+            throw new Error(`No bore asset found for ${targetTriple}`);
+        }
+        assetName = selected;
+        assetUrl = assets.find(a => a.name === selected)!.browser_download_url;
+    } catch (err: any) {
+        throw new Error(
+            `Failed to resolve a bore download for ${targetTriple}: ${err?.message ?? err}. ` +
+            `You can install bore manually from https://github.com/ekzhang/bore/releases ` +
+            `and place the binary at ${localPath}.`
+        );
+    }
+
+    const tmpPath = `${localPath}.downloading`;
+    rmSync(tmpPath, { force: true });
+
+    try {
+        await downloadToFile(assetUrl, tmpPath);
+    } catch (err: any) {
+        rmSync(tmpPath, { force: true });
+        throw new Error(
+            `Failed to download bore (${assetName}): ${err?.message ?? err}. ` +
+            `You can install bore manually from https://github.com/ekzhang/bore/releases ` +
+            `and place the binary at ${localPath}.`
+        );
+    }
+
+    await extractArchive(tmpPath, localPath, filename, assetName);
+
+    if (process.platform !== 'win32') {
+        try {
+            chmodSync(localPath, 0o755);
+        } catch {}
+    }
+    return localPath;
+};
+
 const startBore = async (): Promise<void> => {
-    const cmd = process.platform === 'win32' ? 'bore.exe' : 'bore';
+    const cmd = await ensureBoreBinary();
     let proc: Subprocess;
     try {
         proc = spawn([cmd, 'local', String(PROXY_PORT), '--to', 'bore.pub'], {
             stdout: 'pipe',
             stderr: 'pipe',
         });
-    } catch {
+    } catch (e: any) {
         throw new Error(
-            `bore not found on PATH. Install from https://github.com/ekzhang/bore/releases and ensure 'bore' is runnable.`
+            `Failed to start bore (${cmd}): ${e?.message ?? e}`
         );
     }
     currentProc = proc;
