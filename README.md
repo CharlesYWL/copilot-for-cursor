@@ -194,6 +194,28 @@ Embedding-only models also listed by the upstream API are `cus-text-embedding-3-
 
 > Claude minor-version aliases use dashes in Cursor (for example, `cus-claude-opus-4-8`). The proxy translates them to the dotted upstream ID (`claude-opus-4.8`). GPT-5.x models are automatically routed through the Responses API bridge when required.
 
+### Context window and model aliases
+
+Cursor decides a BYOK model's context window from **its own model catalog**, not from the limits your endpoint reports in `/v1/models`. When a custom model name resembles a catalog entry, Cursor applies that entry's window — so `cus-claude-opus-5` shows **200K** even though the Copilot subscription serves **1M** (936K usable prompt tokens). Cursor has no UI field for overriding this.
+
+The workaround is to serve the model under a name Cursor does not recognize. Register an alias, then select it in Cursor:
+
+```bash
+curl -X PATCH http://localhost:4142/api/settings \
+  -H 'Content-Type: application/json' \
+  -d '{"modelAliases":{"opus5x":"claude-opus-5"}}'
+```
+
+`cus-opus5x` now appears in `/v1/models` carrying the real capabilities of `claude-opus-5`, and requests for it are forwarded upstream as `claude-opus-5`. Because the name no longer matches a catalog entry, Cursor falls back to its large default window instead of the 200K one.
+
+Notes:
+
+*   Alias names and targets accept letters, digits, `.`, `_`, and `-`. Invalid or self-referential entries are dropped.
+*   An alias whose target is not advertised upstream is skipped in the model list.
+*   Aliases compose with Claude minor-version translation, so `{"bigopus":"claude-opus-4-8"}` resolves to `claude-opus-4.8`.
+*   The proxy's own compaction always uses the real upstream limits, regardless of what Cursor displays.
+*   Cursor's catalog matching is undocumented and may change; if one alias still shows a small window, try a name that shares fewer characters with the original model ID.
+
 ![Cursor Settings Configuration](./cursor-settings.png)
 
 ---
@@ -265,6 +287,7 @@ Available fields:
 | `tunnel.autoStart` | boolean | Starts the saved tunnel provider on future launches |
 | `tunnel.provider` | string | `cloudflared`, `ngrok`, or `bore` |
 | `tunnel.authtoken` | string | Optional one-time ngrok token; never persisted |
+| `modelAliases` | object | Maps a Cursor-facing alias to a real upstream model ID (see [Context window and model aliases](#context-window-and-model-aliases)) |
 
 Settings mutations are serialized so concurrent agents cannot overwrite one another. Call management endpoints through `localhost` or another trusted connection; they control the live proxy and tunnel.
 
