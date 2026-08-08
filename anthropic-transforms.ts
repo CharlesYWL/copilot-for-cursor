@@ -1,3 +1,5 @@
+import { normalizeToolCallId } from './tool-call-id';
+
 const cleanSchema = (schema: any): any => {
     if (!schema || typeof schema !== 'object') return schema;
     if (schema.additionalProperties !== undefined) delete schema.additionalProperties;
@@ -202,6 +204,14 @@ const transformMessages = (json: any, isClaude: boolean): void => {
 
     for (let i = 0; i < json.messages.length; i++) {
         const msg = json.messages[i];
+        if (Array.isArray(msg.tool_calls)) {
+            for (const toolCall of msg.tool_calls) {
+                toolCall.id = normalizeToolCallId(toolCall.id);
+            }
+        }
+        if (msg.role === 'tool') {
+            msg.tool_call_id = normalizeToolCallId(msg.tool_call_id);
+        }
         if (Array.isArray(msg.content) && msg.content.length === 0) {
             msg.content = ' ';
         }

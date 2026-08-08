@@ -1909,7 +1909,9 @@ async function saveTunnelPreferences() {
 
 async function handleTunnelStart() {
     const provider = document.getElementById('tunnel-provider').value;
-    const authtoken = document.getElementById('tunnel-authtoken').value.trim() || undefined;
+    const authtoken = provider === 'ngrok'
+        ? document.getElementById('tunnel-authtoken').value.trim() || undefined
+        : undefined;
     const autoStart = document.getElementById('tunnel-auto-start').checked;
     const startBtn = document.getElementById('tunnel-start-btn');
     startBtn.disabled = true;

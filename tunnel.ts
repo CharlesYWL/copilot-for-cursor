@@ -53,9 +53,10 @@ export const subscribeTunnel = (cb: (s: TunnelState) => void): (() => void) => {
     };
 };
 
-const getCloudflaredAssetName = (): string | null => {
-    const platform = process.platform;
-    const arch = process.arch;
+export const getCloudflaredAssetName = (
+    platform: NodeJS.Platform = process.platform,
+    arch: string = process.arch,
+): string | null => {
     if (platform === 'win32') {
         // Cloudflare does not publish a native Windows ARM64 build; the amd64
         // binary runs fine under Windows-on-ARM x64 emulation.
@@ -71,7 +72,9 @@ const getCloudflaredAssetName = (): string | null => {
         };
         return `cloudflared-linux-${archMap[arch] ?? 'amd64'}`;
     }
-    // macOS ships as .tgz — skip automatic download for now.
+    if (platform === 'darwin') {
+        return `cloudflared-darwin-${arch === 'arm64' ? 'arm64' : 'amd64'}.tgz`;
+    }
     return null;
 };
 
@@ -157,7 +160,37 @@ const ensureCloudflaredBinary = async (): Promise<string> => {
         }
     }
 
-    renameSync(tmpPath, localPath);
+    if (assetName.endsWith('.tgz')) {
+        const extractDir = `${localPath}.extracting`;
+        try {
+            rmSync(extractDir, { recursive: true, force: true });
+            mkdirSync(extractDir, { recursive: true });
+
+            const extractProc = spawn(['tar', '-xzf', tmpPath, '-C', extractDir], {
+                stdout: 'ignore',
+                stderr: 'pipe',
+            });
+            const stderrPromise = new Response(extractProc.stderr).text();
+            const exitCode = await extractProc.exited;
+            const stderr = (await stderrPromise).trim();
+            if (exitCode !== 0) {
+                throw new Error(`tar exited with code ${exitCode}${stderr ? `: ${stderr}` : ''}`);
+            }
+
+            const extractedBinary = join(extractDir, filename);
+            if (!existsSync(extractedBinary)) {
+                throw new Error(`Archive ${assetName} did not contain ${filename}`);
+            }
+            renameSync(extractedBinary, localPath);
+        } catch (err: any) {
+            throw new Error(`Failed to extract ${assetName}: ${err?.message ?? err}`);
+        } finally {
+            rmSync(tmpPath, { force: true });
+            rmSync(extractDir, { recursive: true, force: true });
+        }
+    } else {
+        renameSync(tmpPath, localPath);
+    }
 
     if (process.platform !== 'win32') {
         try {

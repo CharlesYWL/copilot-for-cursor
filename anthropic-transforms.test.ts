@@ -166,3 +166,69 @@ describe('normalizeRequest — tool_result image stripping', () => {
         expect(transformedSize).toBeLessThan(2_000);
     });
 });
+
+describe('normalizeRequest — tool call IDs', () => {
+    it('sanitizes Claude-incompatible IDs while preserving tool result pairing', () => {
+        const invalidId = 'toolu:cursor/read.file#1';
+        const json = {
+            messages: [
+                {
+                    role: 'assistant',
+                    content: [
+                        {
+                            type: 'tool_use',
+                            id: invalidId,
+                            name: 'Read',
+                            input: { path: 'README.md' },
+                        },
+                    ],
+                },
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: invalidId,
+                            content: 'file contents',
+                        },
+                    ],
+                },
+            ],
+        };
+
+        normalizeRequest(json, true);
+
+        const toolCallId = json.messages[0].tool_calls[0].id;
+        expect(toolCallId).toMatch(/^[a-zA-Z0-9_-]+$/);
+        expect(toolCallId.length).toBeLessThanOrEqual(64);
+        expect(toolCallId).not.toBe(invalidId);
+        expect(json.messages[1].tool_call_id).toBe(toolCallId);
+    });
+
+    it('sanitizes IDs in existing OpenAI-format tool messages', () => {
+        const invalidId = 'call.with.invalid:characters';
+        const json = {
+            messages: [
+                {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [{
+                        id: invalidId,
+                        type: 'function',
+                        function: { name: 'Read', arguments: '{}' },
+                    }],
+                },
+                {
+                    role: 'tool',
+                    tool_call_id: invalidId,
+                    content: 'done',
+                },
+            ],
+        };
+
+        normalizeRequest(json, true);
+
+        expect(json.messages[0].tool_calls[0].id).toMatch(/^[a-zA-Z0-9_-]+$/);
+        expect(json.messages[1].tool_call_id).toBe(json.messages[0].tool_calls[0].id);
+    });
+});
