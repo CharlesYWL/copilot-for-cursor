@@ -201,9 +201,13 @@ Embedding-only models also listed by the upstream API are `cus-text-embedding-3-
 
 ### Context window and model aliases
 
-Cursor decides a BYOK model's context window from **its own model catalog**, not from the limits your endpoint reports in `/v1/models`. When a custom model name resembles a catalog entry, Cursor applies that entry's window — so `cus-claude-opus-5` shows **200K** even though the Copilot subscription serves **1M** (936K usable prompt tokens). Cursor has no UI field for overriding this.
+Cursor's model settings display **200K** for BYOK models regardless of what your endpoint reports in `/v1/models`, and there is no UI field to change it. Renaming the model does not affect the displayed number.
 
-The workaround is to serve the model under a name Cursor does not recognize. Register an alias, then select it in Cursor:
+**That number is cosmetic.** It does not cap what Cursor actually sends. Measured against this proxy, a single `claude-opus-5` request reached **322,668 prompt tokens** and was accepted upstream (HTTP 200) while Cursor still displayed 200K. The real ceiling is the upstream limit — 936K usable prompt tokens for the 1M Claude models — and the proxy's compaction always works from those real limits, not from Cursor's display.
+
+So if you only wanted a larger context, you already have it; no configuration is needed.
+
+Model aliases exist for a different reason: exposing a model under a shorter or more memorable name.
 
 ```bash
 curl -X PATCH http://localhost:4142/api/settings \
@@ -211,15 +215,14 @@ curl -X PATCH http://localhost:4142/api/settings \
   -d '{"modelAliases":{"opus5x":"claude-opus-5"}}'
 ```
 
-`cus-opus5x` now appears in `/v1/models` carrying the real capabilities of `claude-opus-5`, and requests for it are forwarded upstream as `claude-opus-5`. Because the name no longer matches a catalog entry, Cursor falls back to its large default window instead of the 200K one.
+`cus-opus5x` then appears in `/v1/models` carrying the real capabilities of `claude-opus-5`, and requests for it are forwarded upstream as `claude-opus-5`.
 
 Notes:
 
 *   Alias names and targets accept letters, digits, `.`, `_`, and `-`. Invalid or self-referential entries are dropped.
 *   An alias whose target is not advertised upstream is skipped in the model list.
 *   Aliases compose with Claude minor-version translation, so `{"bigopus":"claude-opus-4-8"}` resolves to `claude-opus-4.8`.
-*   The proxy's own compaction always uses the real upstream limits, regardless of what Cursor displays.
-*   Cursor's catalog matching is undocumented and may change; if one alias still shows a small window, try a name that shares fewer characters with the original model ID.
+*   Aliases do **not** change the context window Cursor displays.
 
 ![Cursor Settings Configuration](./cursor-settings.png)
 
@@ -292,7 +295,7 @@ Available fields:
 | `tunnel.autoStart` | boolean | Starts the saved tunnel provider on future launches |
 | `tunnel.provider` | string | `cloudflared`, `ngrok`, or `bore` |
 | `tunnel.authtoken` | string | Optional one-time ngrok token; never persisted |
-| `modelAliases` | object | Maps a Cursor-facing alias to a real upstream model ID (see [Context window and model aliases](#context-window-and-model-aliases)) |
+| `modelAliases` | object | Maps a Cursor-facing alias to a real upstream model ID (see [Context window and model aliases](#context-window-and-model-aliases)); does not change Cursor's displayed context window |
 
 Settings mutations are serialized so concurrent agents cannot overwrite one another. Call management endpoints through `localhost` or another trusted connection; they control the live proxy and tunnel.
 
