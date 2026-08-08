@@ -6,9 +6,9 @@ import { addRequestLog, getNextRequestId, getUsageStats, flushToDisk, type Reque
 import { loadAuthConfig, saveAuthConfig, generateApiKey, validateApiKey } from './auth-config';
 import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, deleteUpstreamApiKey } from './upstream-auth';
 import { compactIfNeeded, isMaxMode, setMaxModeEnabled } from './max-mode';
-import { needsResponsesAPI, resolveUpstreamModelId } from './model-routing';
+import { buildAliasModelEntries, needsResponsesAPI, resolveModelAlias, resolveUpstreamModelId } from './model-routing';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
-import { isTunnelProvider, loadProxySettings, saveProxySettings } from './settings-config';
+import { isTunnelProvider, loadProxySettings, normalizeModelAliases, saveProxySettings } from './settings-config';
 import { isTrustedManagementRequest } from './management-access';
 import { buildUpstreamUrl } from './upstream-url';
 import { existsSync } from 'fs';
@@ -61,6 +61,7 @@ function getLiveSettings() {
   return {
     maxMode: isMaxMode(),
     requireApiKey: auth.requireApiKey,
+    modelAliases: settings.modelAliases,
     tunnel: {
       ...tunnelState,
       enabled: tunnelState.status === 'starting' || tunnelState.status === 'running',
@@ -267,7 +268,7 @@ Bun.serve({
             return Response.json({ error: 'Request body must be a JSON object' }, { status: 400, headers: corsHeaders });
         }
         const unknownSettingsFields = Object.keys(body).filter(
-            key => !['maxMode', 'requireApiKey', 'tunnel'].includes(key),
+            key => !['maxMode', 'requireApiKey', 'tunnel', 'modelAliases'].includes(key),
         );
         if (unknownSettingsFields.length > 0) {
             return Response.json(
@@ -282,6 +283,7 @@ Bun.serve({
                 maxMode?: unknown;
                 requireApiKey?: unknown;
                 tunnel?: unknown;
+                modelAliases?: unknown;
             };
             if (patch.maxMode !== undefined && typeof patch.maxMode !== 'boolean') {
                 return Response.json({ error: '`maxMode` must be a boolean' }, { status: 400, headers: corsHeaders });
@@ -347,6 +349,9 @@ Bun.serve({
 
             if (patch.maxMode !== undefined) {
                 settings.maxMode = patch.maxMode;
+            }
+            if (patch.modelAliases !== undefined) {
+                settings.modelAliases = normalizeModelAliases(patch.modelAliases);
             }
             if (patch.requireApiKey !== undefined) {
                 const auth = loadAuthConfig();
@@ -539,6 +544,7 @@ Bun.serve({
           json.model = json.model.slice(PREFIX.length);
         }
         if (typeof json.model === 'string') {
+          json.model = resolveModelAlias(json.model, loadProxySettings().modelAliases);
           json.model = resolveUpstreamModelId(json.model);
         }
         if (originalModel !== json.model) {
@@ -580,6 +586,7 @@ Bun.serve({
           targetModel = json.model.slice(PREFIX.length);
         }
         if (typeof targetModel === 'string') {
+          targetModel = resolveModelAlias(targetModel, loadProxySettings().modelAliases);
           targetModel = resolveUpstreamModelId(targetModel);
           json.model = targetModel;
         }
@@ -723,7 +730,9 @@ Bun.serve({
         const data = await response.json();
         
         if (data.data && Array.isArray(data.data)) {
-          data.data = data.data.map((model: any) => ({
+          const aliasEntries = buildAliasModelEntries(data.data, loadProxySettings().modelAliases);
+
+          data.data = [...data.data, ...aliasEntries].map((model: any) => ({
             ...model,
             id: PREFIX + model.id,
             display_name: PREFIX + (model.display_name || model.id)

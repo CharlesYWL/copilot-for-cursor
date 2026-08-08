@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { normalizeProxySettings } from './settings-config';
+import { normalizeModelAliases, normalizeProxySettings } from './settings-config';
 import { parseStartupOptions } from './startup-options';
 
 const settings = normalizeProxySettings({
@@ -15,6 +15,7 @@ describe('proxy settings', () => {
         })).toEqual({
             maxMode: false,
             tunnel: { autoStart: false, provider: 'cloudflared' },
+            modelAliases: {},
         });
     });
 
@@ -47,5 +48,37 @@ describe('proxy settings', () => {
     test('rejects conflicting or invalid tunnel flags', () => {
         expect(() => parseStartupOptions(['--tunnel=bore', '--no-tunnel'], settings)).toThrow();
         expect(() => parseStartupOptions(['--tunnel=invalid'], settings)).toThrow();
+    });
+});
+
+describe('model aliases', () => {
+    test('keeps well-formed alias mappings', () => {
+        expect(normalizeModelAliases({
+            'opus5x': 'claude-opus-5',
+            'longctx': 'gemini-3.1-pro-preview',
+        })).toEqual({
+            'opus5x': 'claude-opus-5',
+            'longctx': 'gemini-3.1-pro-preview',
+        });
+    });
+
+    test('drops malformed, self-referential, and non-object entries', () => {
+        expect(normalizeModelAliases({
+            'has space': 'claude-opus-5',
+            'bad/target': 'claude-opus-5',
+            'arrow': 'claude opus 5',
+            'claude-opus-5': 'claude-opus-5',
+            'numeric': 42,
+            'good': 'claude-opus-5',
+        })).toEqual({ good: 'claude-opus-5' });
+
+        expect(normalizeModelAliases(null)).toEqual({});
+        expect(normalizeModelAliases(['opus5x'])).toEqual({});
+        expect(normalizeModelAliases('opus5x')).toEqual({});
+    });
+
+    test('persists aliases through settings normalization', () => {
+        expect(normalizeProxySettings({ modelAliases: { opus5x: 'claude-opus-5' } }).modelAliases)
+            .toEqual({ opus5x: 'claude-opus-5' });
     });
 });

@@ -11,7 +11,14 @@ export interface ProxySettings {
         autoStart: boolean;
         provider: TunnelProvider;
     };
+    // Maps a Cursor-facing alias to the real upstream model id. Cursor derives a
+    // model's context window from its own catalog rather than from
+    // `/v1/models`, so an alias that doesn't resemble a known model name is the
+    // only way to escape a catalog entry's smaller advertised window.
+    modelAliases: Record<string, string>;
 }
+
+const ALIAS_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
 const CONFIG_DIR = join(homedir(), '.copilot-proxy');
 const CONFIG_PATH = join(CONFIG_DIR, 'settings.json');
@@ -21,12 +28,29 @@ const DEFAULT_SETTINGS: ProxySettings = {
         autoStart: false,
         provider: 'cloudflared',
     },
+    modelAliases: {},
 };
 
 let cachedSettings: ProxySettings | null = null;
 
 export function isTunnelProvider(value: unknown): value is TunnelProvider {
     return typeof value === 'string' && TUNNEL_PROVIDERS.includes(value as TunnelProvider);
+}
+
+export function normalizeModelAliases(value: unknown): Record<string, string> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+
+    const aliases: Record<string, string> = {};
+    for (const [alias, target] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof target !== 'string') continue;
+        const trimmedAlias = alias.trim();
+        const trimmedTarget = target.trim();
+        if (!ALIAS_PATTERN.test(trimmedAlias) || !ALIAS_PATTERN.test(trimmedTarget)) continue;
+        // A self-referential alias would shadow the real model and recurse.
+        if (trimmedAlias === trimmedTarget) continue;
+        aliases[trimmedAlias] = trimmedTarget;
+    }
+    return aliases;
 }
 
 export function normalizeProxySettings(value: unknown): ProxySettings {
@@ -45,6 +69,7 @@ export function normalizeProxySettings(value: unknown): ProxySettings {
                 ? tunnel.provider
                 : DEFAULT_SETTINGS.tunnel.provider,
         },
+        modelAliases: normalizeModelAliases(input.modelAliases),
     };
 }
 
@@ -52,6 +77,7 @@ function cloneSettings(settings: ProxySettings): ProxySettings {
     return {
         maxMode: settings.maxMode,
         tunnel: { ...settings.tunnel },
+        modelAliases: { ...settings.modelAliases },
     };
 }
 
