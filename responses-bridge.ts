@@ -1,18 +1,23 @@
 import { convertResponsesSyncToChatCompletions, convertResponsesStreamToChatCompletions } from './responses-converters';
 import { getUpstreamAuthHeader } from './upstream-auth';
+import { normalizeToolCallId } from './tool-call-id';
 
 export interface BridgeResult {
     response: Response;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
+function toResponsesCallId(callId: unknown): string {
+    return normalizeToolCallId(callId);
+}
+
 function toResponsesFunctionCallItemId(callId: unknown): string {
-    if (typeof callId !== 'string' || !callId) {
-        throw new Error('Assistant tool call is missing a valid id');
+    const normalizedCallId = toResponsesCallId(callId);
+    if (normalizedCallId.startsWith('fc_')) return normalizedCallId;
+    if (normalizedCallId.startsWith('call_')) {
+        return normalizeToolCallId(`fc_${normalizedCallId.slice(5)}`);
     }
-    if (callId.startsWith('fc_')) return callId;
-    if (callId.startsWith('call_')) return `fc_${callId.slice(5)}`;
-    return `fc_${callId}`;
+    return normalizeToolCallId(`fc_${normalizedCallId}`);
 }
 
 export async function handleResponsesAPIBridge(json: any, req: Request, chatId: string, targetUrl: string): Promise<BridgeResult> {
@@ -47,7 +52,7 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
             if (m.role === 'tool') {
                 return {
                     type: 'function_call_output',
-                    call_id: m.tool_call_id,
+                    call_id: toResponsesCallId(m.tool_call_id),
                     output: typeof content === 'string' ? content : JSON.stringify(content),
                 };
             }
@@ -58,10 +63,11 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
                     items.push({ role: 'assistant', type: 'message', content: [{ type: 'output_text', text: content }] });
                 }
                 for (const tc of m.tool_calls) {
+                    const callId = toResponsesCallId(tc.id);
                     items.push({
                         type: 'function_call',
-                        id: toResponsesFunctionCallItemId(tc.id),
-                        call_id: tc.id,
+                        id: toResponsesFunctionCallItemId(callId),
+                        call_id: callId,
                         name: tc.function.name,
                         arguments: tc.function.arguments,
                     });

@@ -135,4 +135,37 @@ describe('responses-bridge tool calls', () => {
             },
         ]);
     });
+
+    test('bounds long Cursor tool call ids and keeps outputs matched', async () => {
+        const captured = captureFetch();
+        const longCallId = `toolu_${'x'.repeat(80)}`;
+        await handleResponsesAPIBridge(
+            {
+                model: 'gpt-5.6-sol',
+                messages: [
+                    {
+                        role: 'assistant',
+                        content: null,
+                        tool_calls: [{
+                            id: longCallId,
+                            type: 'function',
+                            function: { name: 'Read', arguments: '{"path":"README.md"}' },
+                        }],
+                    },
+                    {
+                        role: 'tool',
+                        tool_call_id: longCallId,
+                        content: 'file contents',
+                    },
+                ],
+            },
+            makeDummyRequest(), 'chat-tool-long', 'http://localhost:4141',
+        );
+
+        const [functionCall, functionOutput] = captured.calls[0].body.input;
+        expect(functionCall.id.length).toBeLessThanOrEqual(64);
+        expect(functionCall.call_id.length).toBeLessThanOrEqual(64);
+        expect(functionCall.call_id).not.toBe(longCallId);
+        expect(functionOutput.call_id).toBe(functionCall.call_id);
+    });
 });
