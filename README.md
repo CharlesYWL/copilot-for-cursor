@@ -138,6 +138,7 @@ Cursor → (public tunnel) → proxy-router (:4142) → copilot-api (:4141) → 
 | `responses-bridge.ts` | Chat Completions → Responses API bridge for GPT-5.x / goldeneye |
 | `responses-converters.ts` | Responses API → Chat Completions format (sync & streaming SSE) |
 | `stream-proxy.ts` | Streaming passthrough with chunk logging and error detection |
+| `upstream-retry.ts` | Retries transient upstream failures (bare `403 forbidden`, 408, 425, 429, 5xx, dropped connections) with backoff |
 | `debug-logger.ts` | Request/response debug logging helpers |
 | `start.ts` | One-command launcher for copilot-api + proxy-router |
 | `max-mode.ts` | Auto-compaction for long conversations (`--max` flag) |

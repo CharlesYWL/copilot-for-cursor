@@ -1,6 +1,7 @@
 import { convertResponsesSyncToChatCompletions, convertResponsesStreamToChatCompletions } from './responses-converters';
 import { getUpstreamAuthHeader } from './upstream-auth';
 import { normalizeToolCallId } from './tool-call-id';
+import { fetchUpstreamWithRetry } from './upstream-retry';
 
 export interface BridgeResult {
     response: Response;
@@ -121,16 +122,20 @@ export async function handleResponsesAPIBridge(json: any, req: Request, chatId: 
     headers.set("content-length", String(new TextEncoder().encode(responsesBody).length));
     headers.set("authorization", getUpstreamAuthHeader());
 
-    const response = await fetch(responsesUrl.toString(), {
-        method: "POST",
-        headers: headers,
-        body: responsesBody,
-    });
+    const { response, errorText } = await fetchUpstreamWithRetry(
+        responsesUrl.toString(),
+        {
+            method: "POST",
+            headers: headers,
+            body: responsesBody,
+        },
+        { label: `[responses-bridge ${json.model}]` },
+    );
 
     console.log(`📡 Responses API upstream: ${response.status} | ${response.headers.get('content-type')}`);
 
     if (!response.ok) {
-        const errText = await response.text();
+        const errText = errorText ?? '';
         console.error(`❌ Responses API Error (${response.status}):`, errText);
         return {
             response: new Response(errText, { status: response.status, headers: corsHeaders }),
