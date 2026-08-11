@@ -11,6 +11,7 @@ import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelPr
 import { isTunnelProvider, loadProxySettings, normalizeModelAliases, saveProxySettings } from './settings-config';
 import { isTrustedManagementRequest } from './management-access';
 import { buildUpstreamUrl } from './upstream-url';
+import { fetchUpstreamWithRetry } from './upstream-retry';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -560,12 +561,16 @@ Bun.serve({
         respHeaders.set("authorization", getUpstreamAuthHeader());
         respHeaders.delete("accept-encoding");
         console.log(`\uD83D\uDD00 [/responses] passthrough \u2192 upstream for ${respModel} (stream=${!!json.stream})`);
-        const upstream = await fetch(respUrl.toString(), { method: "POST", headers: respHeaders, body: respBody });
+        const { response: upstream, errorText } = await fetchUpstreamWithRetry(
+          respUrl.toString(),
+          { method: "POST", headers: respHeaders, body: respBody },
+          { label: '[/responses]' },
+        );
         console.log(`\uD83D\uDCE1 [/responses] upstream: ${upstream.status} | ${upstream.headers.get('content-type')}`);
         const outHeaders = new Headers(upstream.headers);
         outHeaders.set("Access-Control-Allow-Origin", "*");
         if (!upstream.ok) {
-          const errText = await upstream.text();
+          const errText = errorText ?? '';
           console.error(`\u274C [/responses] upstream error (${upstream.status}):`, errText.slice(0, 500));
           return new Response(errText, { status: upstream.status, headers: outHeaders });
         }
@@ -667,18 +672,22 @@ Bun.serve({
         const body = JSON.stringify(json);
         headers.set("content-length", String(new TextEncoder().encode(body).length));
 
-        const response = await fetch(targetUrl.toString(), {
-          method: "POST",
-          headers: headers,
-          body: body,
-        });
+        const { response, errorText } = await fetchUpstreamWithRetry(
+          targetUrl.toString(),
+          {
+            method: "POST",
+            headers: headers,
+            body: body,
+          },
+          { label: `[chat/completions ${targetModel}]` },
+        );
 
         const responseHeaders = new Headers(response.headers);
         responseHeaders.set("Access-Control-Allow-Origin", "*");
         console.log(`📡 Upstream response: ${response.status} | content-type: ${response.headers.get('content-type')}`);
         
         if (!response.ok) {
-            const errText = await response.text();
+            const errText = errorText ?? '';
             console.error(`❌ Upstream Error (${response.status}):`, errText);
             addRequestLog({
                 id: getNextRequestId(), timestamp: startTime, model: targetModel,
