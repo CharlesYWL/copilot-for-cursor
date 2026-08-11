@@ -21,6 +21,14 @@ describe('transient upstream detection', () => {
         }
         expect(isTransientUpstreamFailure(404, '')).toBe(false);
     });
+
+    test('covers the whole 5xx range, including Cloudflare 52x codes', () => {
+        for (const status of [505, 520, 521, 522, 524, 599]) {
+            expect(isTransientUpstreamFailure(status, '')).toBe(true);
+        }
+        expect(isTransientUpstreamFailure(600, '')).toBe(false);
+        expect(isTransientUpstreamFailure(499, '')).toBe(false);
+    });
 });
 
 function stubResponses(statuses: Array<{ status: number; body: string }>) {
@@ -84,5 +92,49 @@ describe('fetchUpstreamWithRetry', () => {
             onRetry: () => {},
         });
         expect(delays).toEqual([500, 1000]);
+    });
+
+    test('retries a dropped connection and reports it as a transport failure', async () => {
+        let call = 0;
+        const seen: Array<{ status: number; body: string }> = [];
+        const fetchImpl = (async () => {
+            call++;
+            if (call === 1) throw new Error('fetch failed: ECONNRESET');
+            return new Response('{"ok":true}', { status: 200 });
+        }) as unknown as typeof fetch;
+
+        const result = await fetchUpstreamWithRetry('http://x', { method: 'POST' }, {
+            label: 'test',
+            fetchImpl,
+            sleep: noSleep,
+            onRetry: ({ status, body }) => seen.push({ status, body }),
+        });
+
+        expect(result.response.status).toBe(200);
+        expect(result.attempts).toBe(2);
+        expect(seen).toHaveLength(1);
+        expect(seen[0]!.status).toBe(0);
+        expect(seen[0]!.body).toContain('ECONNRESET');
+    });
+
+    test('rethrows the transport error once the budget is exhausted', async () => {
+        let call = 0;
+        const fetchImpl = (async () => {
+            call++;
+            throw new Error('socket hang up');
+        }) as unknown as typeof fetch;
+
+        let caught: Error | null = null;
+        try {
+            await fetchUpstreamWithRetry('http://x', { method: 'POST' }, {
+                label: 'test', fetchImpl, sleep: noSleep, maxAttempts: 3, onRetry: () => {},
+            });
+        } catch (error: any) {
+            caught = error;
+        }
+
+        expect(caught).not.toBeNull();
+        expect(caught!.message).toBe('socket hang up');
+        expect(call).toBe(3);
     });
 });
