@@ -903,20 +903,48 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
         </div>
 
         <div class="card" style="margin-bottom:16px;">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
-                <div>
-                    <label for="tunnel-provider" class="card-label" style="display:block; margin-bottom:6px;">Provider</label>
-                    <select id="tunnel-provider" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px;">
-                        <option value="cloudflared">Cloudflare Quick Tunnel (no account)</option>
-                        <option value="ngrok">ngrok (needs authtoken)</option>
-                        <option value="bore">bore.pub (no account)</option>
-                    </select>
-                </div>
-                <div id="tunnel-authtoken-wrap" style="display:none;">
-                    <label for="tunnel-authtoken" class="card-label" style="display:block; margin-bottom:6px;">ngrok Authtoken (optional)</label>
-                    <input id="tunnel-authtoken" type="password" placeholder="Leave blank if already set via NGROK_AUTHTOKEN" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace;">
-                </div>
+            <div style="margin-bottom:12px;">
+                <label for="tunnel-provider" class="card-label" style="display:block; margin-bottom:6px;">Provider</label>
+                <select id="tunnel-provider" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px;">
+                    <option value="cloudflared-quick">Cloudflare Quick Tunnel — random URL, no account</option>
+                    <option value="cloudflared-named">Cloudflare Named Tunnel — fixed URL, needs a domain on Cloudflare</option>
+                    <option value="ngrok">ngrok — fixed URL via a free static domain</option>
+                    <option value="tailscale">Tailscale Funnel — fixed *.ts.net URL, no domain needed</option>
+                    <option value="bore">bore.pub — HTTP only, Cursor needs HTTPS</option>
+                </select>
+                <div id="tunnel-provider-hint" style="font-size:12px; color:var(--text-dim); margin-top:6px;"></div>
             </div>
+
+            <div id="fields-cloudflared-named" class="tunnel-fields" style="display:none; margin-bottom:12px;">
+                <label for="tunnel-cf-hostname" class="card-label" style="display:block; margin-bottom:6px;">Public hostname</label>
+                <input id="tunnel-cf-hostname" type="text" placeholder="copilot.example.com" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace; margin-bottom:12px;">
+                <label for="tunnel-cf-token" class="card-label" style="display:block; margin-bottom:6px;">Tunnel token <span style="color:var(--text-muted); font-weight:400;">(remote-managed, from the Zero Trust dashboard)</span></label>
+                <input id="tunnel-cf-token" type="password" placeholder="eyJhIjoi…" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace; margin-bottom:12px;">
+                <label for="tunnel-cf-name" class="card-label" style="display:block; margin-bottom:6px;">…or tunnel name <span style="color:var(--text-muted); font-weight:400;">(locally-managed, from <code>cloudflared tunnel create</code>)</span></label>
+                <input id="tunnel-cf-name" type="text" placeholder="copilot-proxy" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace;">
+            </div>
+
+            <div id="fields-ngrok" class="tunnel-fields" style="display:none; margin-bottom:12px;">
+                <label for="tunnel-ngrok-domain" class="card-label" style="display:block; margin-bottom:6px;">Static domain <span style="color:var(--text-muted); font-weight:400;">(leave blank for a random URL)</span></label>
+                <input id="tunnel-ngrok-domain" type="text" placeholder="your-name.ngrok-free.dev" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace; margin-bottom:12px;">
+                <label for="tunnel-authtoken" class="card-label" style="display:block; margin-bottom:6px;">Authtoken <span style="color:var(--text-muted); font-weight:400;">(optional if already set via <code>ngrok config</code>)</span></label>
+                <input id="tunnel-authtoken" type="password" placeholder="Leave blank if already configured" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace;">
+            </div>
+
+            <div id="fields-tailscale" class="tunnel-fields" style="display:none; margin-bottom:12px;">
+                <label for="tunnel-ts-port" class="card-label" style="display:block; margin-bottom:6px;">Public HTTPS port</label>
+                <select id="tunnel-ts-port" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px;">
+                    <option value="443">443 (default)</option>
+                    <option value="8443">8443</option>
+                    <option value="10000">10000</option>
+                </select>
+            </div>
+
+            <div id="fields-bore" class="tunnel-fields" style="display:none; margin-bottom:12px;">
+                <label for="tunnel-bore-port" class="card-label" style="display:block; margin-bottom:6px;">Remote port <span style="color:var(--text-muted); font-weight:400;">(best effort — fails if already taken)</span></label>
+                <input id="tunnel-bore-port" type="number" min="1024" max="65535" placeholder="e.g. 41420" style="width:100%; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border-light); border-radius:6px; font-size:13px; font-family:monospace;">
+            </div>
+
             <div style="display:flex; gap:8px;">
                 <button id="tunnel-start-btn" onclick="handleTunnelStart()" class="btn-primary" style="flex:1; padding:11px 16px;">Start Tunnel</button>
                 <button id="tunnel-stop-btn" onclick="handleTunnelStop()" style="flex:1; background:rgba(248,113,113,0.15); color:var(--red); border:1px solid rgba(248,113,113,0.35); padding:11px 16px; border-radius:8px; cursor:pointer; font-weight:600; display:none;">Stop Tunnel</button>
@@ -925,10 +953,17 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
                 <input id="tunnel-auto-start" type="checkbox">
                 Auto-start this tunnel provider whenever the proxy launches
             </label>
+            <label style="display:flex; align-items:center; gap:8px; margin-top:8px; color:var(--text-dim); font-size:13px; cursor:pointer;">
+                <input id="tunnel-auto-reconnect" type="checkbox" checked>
+                Reconnect automatically if the tunnel drops
+            </label>
         </div>
 
         <div id="tunnel-result" class="card" style="display:none; margin-bottom:16px;">
-            <div class="card-label" style="margin-bottom:8px;">Public URL</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <div class="card-label" style="margin:0;">Public URL</div>
+                <span id="tunnel-fixed-badge" style="display:none; font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; background:rgba(74,222,128,0.15); color:var(--green); border:1px solid rgba(74,222,128,0.35);">FIXED</span>
+            </div>
             <div class="copy-row" style="margin-bottom:12px;">
                 <div class="card-value mono" id="tunnel-url" style="font-size:14px; word-break:break-all;"></div>
                 <button class="copy-btn" onclick="copyText(document.getElementById('tunnel-url').textContent, this)">Copy</button>
@@ -1775,31 +1810,107 @@ function clearLogs() {
 let tunnelEventSource = null;
 let tunnelTabInitialized = false;
 
+const TUNNEL_PROVIDER_HINTS = {
+    'cloudflared-quick': 'Zero setup, but the URL changes every restart — you must re-paste it into Cursor each time.',
+    'cloudflared-named': 'Fixed URL. Requires a domain on Cloudflare: create the tunnel, then run `cloudflared tunnel route dns <tunnel> <hostname>`.',
+    'ngrok': 'Fixed URL. Claim your free static domain under Domains in the ngrok dashboard, then paste it here.',
+    'tailscale': 'Fixed URL tied to this machine. Needs MagicDNS, HTTPS certificates and the "funnel" node attribute enabled in the Tailscale admin console.',
+    'bore': 'Plain TCP with no TLS, so Cursor cannot use it. Fine for quick local testing only.',
+};
+
+/** The picker folds provider + cloudflared mode into a single value. */
+function parseTunnelSelection(value) {
+    if (value === 'cloudflared-quick') return { provider: 'cloudflared', cloudflaredMode: 'quick' };
+    if (value === 'cloudflared-named') return { provider: 'cloudflared', cloudflaredMode: 'named' };
+    return { provider: value };
+}
+
+function tunnelSelectionValue(provider, options) {
+    if (provider === 'cloudflared') {
+        return (options && options.cloudflaredMode === 'named') ? 'cloudflared-named' : 'cloudflared-quick';
+    }
+    return provider || 'cloudflared-quick';
+}
+
+function updateTunnelFields() {
+    const value = document.getElementById('tunnel-provider').value;
+    const visible = {
+        'cloudflared-named': 'fields-cloudflared-named',
+        'ngrok': 'fields-ngrok',
+        'tailscale': 'fields-tailscale',
+        'bore': 'fields-bore',
+    }[value];
+    document.querySelectorAll('.tunnel-fields').forEach(el => {
+        el.style.display = el.id === visible ? 'block' : 'none';
+    });
+    const hint = document.getElementById('tunnel-provider-hint');
+    if (hint) hint.textContent = TUNNEL_PROVIDER_HINTS[value] || '';
+}
+
+/** Reads the form into the { provider, options } shape the API expects. */
+function collectTunnelSettings() {
+    const selection = parseTunnelSelection(document.getElementById('tunnel-provider').value);
+    const options = {};
+    if (selection.cloudflaredMode) options.cloudflaredMode = selection.cloudflaredMode;
+    if (selection.cloudflaredMode === 'named') {
+        options.cloudflaredHostname = document.getElementById('tunnel-cf-hostname').value.trim();
+        options.cloudflaredToken = document.getElementById('tunnel-cf-token').value.trim();
+        options.cloudflaredName = document.getElementById('tunnel-cf-name').value.trim();
+    }
+    if (selection.provider === 'ngrok') {
+        options.ngrokDomain = document.getElementById('tunnel-ngrok-domain').value.trim();
+        options.authtoken = document.getElementById('tunnel-authtoken').value.trim();
+    }
+    if (selection.provider === 'bore') {
+        const port = parseInt(document.getElementById('tunnel-bore-port').value, 10);
+        options.borePort = Number.isFinite(port) ? port : '';
+    }
+    if (selection.provider === 'tailscale') {
+        options.tailscalePort = parseInt(document.getElementById('tunnel-ts-port').value, 10) || 443;
+    }
+    return {
+        provider: selection.provider,
+        options,
+        autoStart: document.getElementById('tunnel-auto-start').checked,
+        autoReconnect: document.getElementById('tunnel-auto-reconnect').checked,
+    };
+}
+
+function applyTunnelSettings(tunnel) {
+    if (!tunnel) return;
+    const options = tunnel.options || {};
+    document.getElementById('tunnel-provider').value = tunnelSelectionValue(tunnel.provider, options);
+    document.getElementById('tunnel-cf-hostname').value = options.cloudflaredHostname || '';
+    document.getElementById('tunnel-cf-token').value = options.cloudflaredToken || '';
+    document.getElementById('tunnel-cf-name').value = options.cloudflaredName || '';
+    document.getElementById('tunnel-ngrok-domain').value = options.ngrokDomain || '';
+    document.getElementById('tunnel-authtoken').value = options.authtoken || '';
+    document.getElementById('tunnel-bore-port').value = options.borePort || '';
+    document.getElementById('tunnel-ts-port').value = String(options.tailscalePort || 443);
+    document.getElementById('tunnel-auto-start').checked = !!tunnel.autoStart;
+    document.getElementById('tunnel-auto-reconnect').checked = tunnel.autoReconnect !== false;
+    updateTunnelFields();
+}
+
 function initTunnelTab() {
     if (tunnelTabInitialized) return;
     tunnelTabInitialized = true;
 
     const providerSelect = document.getElementById('tunnel-provider');
-    const authtokenWrap = document.getElementById('tunnel-authtoken-wrap');
-    const autoStartToggle = document.getElementById('tunnel-auto-start');
-    const updateAuthVisibility = () => {
-        authtokenWrap.style.display = providerSelect.value === 'ngrok' ? 'block' : 'none';
-    };
     providerSelect.addEventListener('change', () => {
-        updateAuthVisibility();
+        updateTunnelFields();
         saveTunnelPreferences();
     });
-    autoStartToggle.addEventListener('change', saveTunnelPreferences);
-    updateAuthVisibility();
+    document.getElementById('tunnel-auto-start').addEventListener('change', saveTunnelPreferences);
+    document.getElementById('tunnel-auto-reconnect').addEventListener('change', saveTunnelPreferences);
+    updateTunnelFields();
 
     fetch('/api/settings').then(async r => {
         if (!r.ok) throw new Error(await r.text());
         return r.json();
     }).then(settings => {
         if (settings.tunnel) {
-            providerSelect.value = settings.tunnel.provider || 'cloudflared';
-            autoStartToggle.checked = !!settings.tunnel.autoStart;
-            updateAuthVisibility();
+            applyTunnelSettings(settings.tunnel);
             applyTunnelState(settings.tunnel);
         }
     }).catch(() => {});
@@ -1825,6 +1936,7 @@ function applyTunnelState(s) {
     const errorBox = document.getElementById('tunnel-error');
     const errorMsg = document.getElementById('tunnel-error-msg');
     const endpointTunnelUrl = document.getElementById('endpoint-tunnel-url');
+    const fixedBadge = document.getElementById('tunnel-fixed-badge');
 
     const statusColors = {
         idle:     'var(--text-muted)',
@@ -1834,12 +1946,16 @@ function applyTunnelState(s) {
         stopped:  'var(--text-muted)',
     };
     if (dot) dot.style.background = statusColors[s.status] || 'var(--text-muted)';
-    if (label) label.textContent = s.status + (s.provider ? ' · ' + s.provider : '');
+    if (label) {
+        const restarts = s.restarts ? ' · ' + s.restarts + ' reconnect' + (s.restarts === 1 ? '' : 's') : '';
+        label.textContent = s.status + (s.activeProvider || s.provider ? ' · ' + (s.activeProvider || s.provider) : '') + restarts;
+    }
 
     const isActive = s.status === 'starting' || s.status === 'running';
     if (startBtn) startBtn.style.display = isActive ? 'none' : 'block';
     if (stopBtn) stopBtn.style.display = isActive ? 'block' : 'none';
     if (startBtn) startBtn.textContent = s.status === 'starting' ? 'Starting…' : 'Start Tunnel';
+    if (fixedBadge) fixedBadge.style.display = s.fixed ? 'inline-block' : 'none';
 
     if (s.url && s.status === 'running') {
         result.style.display = 'block';
@@ -1892,12 +2008,18 @@ function renderQRCode(text) {
 
 async function saveTunnelPreferences() {
     try {
-        const provider = document.getElementById('tunnel-provider').value;
-        const autoStart = document.getElementById('tunnel-auto-start').checked;
+        const settings = collectTunnelSettings();
         const response = await fetch('/api/settings', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tunnel: { provider, autoStart } }),
+            body: JSON.stringify({
+                tunnel: {
+                    provider: settings.provider,
+                    options: settings.options,
+                    autoStart: settings.autoStart,
+                    autoReconnect: settings.autoReconnect,
+                },
+            }),
         });
         if (!response.ok) {
             throw new Error(await response.text());
@@ -1908,11 +2030,7 @@ async function saveTunnelPreferences() {
 }
 
 async function handleTunnelStart() {
-    const provider = document.getElementById('tunnel-provider').value;
-    const authtoken = provider === 'ngrok'
-        ? document.getElementById('tunnel-authtoken').value.trim() || undefined
-        : undefined;
-    const autoStart = document.getElementById('tunnel-auto-start').checked;
+    const settings = collectTunnelSettings();
     const startBtn = document.getElementById('tunnel-start-btn');
     startBtn.disabled = true;
     startBtn.textContent = 'Starting…';
@@ -1920,13 +2038,21 @@ async function handleTunnelStart() {
         const response = await fetch('/api/settings', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tunnel: { enabled: true, provider, autoStart, authtoken } }),
+            body: JSON.stringify({
+                tunnel: {
+                    enabled: true,
+                    provider: settings.provider,
+                    options: settings.options,
+                    autoStart: settings.autoStart,
+                    autoReconnect: settings.autoReconnect,
+                },
+            }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to start tunnel');
         applyTunnelState(data.tunnel);
     } catch (error) {
-        applyTunnelState({ status: 'error', provider, error: error.message || String(error) });
+        applyTunnelState({ status: 'error', provider: settings.provider, error: error.message || String(error) });
     } finally {
         startBtn.disabled = false;
     }

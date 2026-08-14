@@ -8,7 +8,7 @@ import { getUpstreamAuthHeader, getUpstreamApiKeys, createUpstreamApiKey, delete
 import { compactIfNeeded, isMaxMode, setMaxModeEnabled } from './max-mode';
 import { buildAliasModelEntries, needsResponsesAPI, resolveModelAlias, resolveUpstreamModelId } from './model-routing';
 import { getTunnelState, startTunnel, stopTunnel, subscribeTunnel, type TunnelProvider } from './tunnel';
-import { isTunnelProvider, loadProxySettings, normalizeModelAliases, saveProxySettings } from './settings-config';
+import { isTunnelProvider, loadProxySettings, mergeTunnelOptions, normalizeModelAliases, redactTunnelOptions, saveProxySettings } from './settings-config';
 import { isTrustedManagementRequest } from './management-access';
 import { buildUpstreamUrl } from './upstream-url';
 import { fetchUpstreamWithRetry } from './upstream-retry';
@@ -69,6 +69,9 @@ function getLiveSettings() {
       activeProvider: tunnelState.provider,
       provider: settings.tunnel.provider,
       autoStart: settings.tunnel.autoStart,
+      autoReconnect: settings.tunnel.autoReconnect,
+      // Secrets are replaced with a placeholder — the dashboard never sees them.
+      options: redactTunnelOptions(settings.tunnel.options),
     },
   };
 }
@@ -301,7 +304,7 @@ Bun.serve({
                 }
                 const candidate = patch.tunnel as Record<string, unknown>;
                 const unknownTunnelFields = Object.keys(candidate).filter(
-                    key => !['enabled', 'autoStart', 'provider', 'authtoken'].includes(key),
+                    key => !['enabled', 'autoStart', 'autoReconnect', 'provider', 'authtoken', 'options'].includes(key),
                 );
                 if (unknownTunnelFields.length > 0) {
                     return Response.json(
@@ -315,15 +318,25 @@ Bun.serve({
                 if (candidate.autoStart !== undefined && typeof candidate.autoStart !== 'boolean') {
                     return Response.json({ error: '`tunnel.autoStart` must be a boolean' }, { status: 400, headers: corsHeaders });
                 }
+                if (candidate.autoReconnect !== undefined && typeof candidate.autoReconnect !== 'boolean') {
+                    return Response.json({ error: '`tunnel.autoReconnect` must be a boolean' }, { status: 400, headers: corsHeaders });
+                }
                 if (candidate.provider !== undefined && !isTunnelProvider(candidate.provider)) {
-                    return Response.json({ error: '`tunnel.provider` must be cloudflared, ngrok, or bore' }, { status: 400, headers: corsHeaders });
+                    return Response.json({ error: '`tunnel.provider` must be cloudflared, ngrok, bore, or tailscale' }, { status: 400, headers: corsHeaders });
                 }
                 if (candidate.authtoken !== undefined && typeof candidate.authtoken !== 'string') {
                     return Response.json({ error: '`tunnel.authtoken` must be a string' }, { status: 400, headers: corsHeaders });
                 }
+                if (
+                    candidate.options !== undefined
+                    && (typeof candidate.options !== 'object' || candidate.options === null || Array.isArray(candidate.options))
+                ) {
+                    return Response.json({ error: '`tunnel.options` must be an object' }, { status: 400, headers: corsHeaders });
+                }
 
                 const enabled = candidate.enabled as boolean | undefined;
                 const autoStart = candidate.autoStart as boolean | undefined;
+                const autoReconnectPatch = candidate.autoReconnect as boolean | undefined;
                 const provider = candidate.provider as TunnelProvider | undefined;
                 const authtoken = candidate.authtoken as string | undefined;
                 const effectiveProvider = provider ?? settings.tunnel.provider;
@@ -331,9 +344,26 @@ Bun.serve({
                     return Response.json({ error: '`tunnel.authtoken` is only valid for ngrok' }, { status: 400, headers: corsHeaders });
                 }
 
+                // Fold the legacy top-level authtoken into options so both shapes work.
+                const optionsPatch: Record<string, unknown> = { ...(candidate.options as Record<string, unknown> ?? {}) };
+                if (authtoken !== undefined && optionsPatch.authtoken === undefined) {
+                    optionsPatch.authtoken = authtoken;
+                }
+                const mergedOptions = mergeTunnelOptions(settings.tunnel.options, optionsPatch);
+                const effectiveAutoReconnect = autoReconnectPatch ?? settings.tunnel.autoReconnect;
+
+                // Persist before starting so the settings stick even if the launch fails.
+                settings.tunnel.options = mergedOptions;
+                if (provider) settings.tunnel.provider = provider;
+                if (autoStart !== undefined) settings.tunnel.autoStart = autoStart;
+                if (autoReconnectPatch !== undefined) settings.tunnel.autoReconnect = autoReconnectPatch;
+
                 if (enabled === true) {
                     try {
-                        await startTunnel(effectiveProvider, { authtoken });
+                        saveProxySettings(settings);
+                        await startTunnel(effectiveProvider, mergedOptions, {
+                            autoReconnect: effectiveAutoReconnect,
+                        });
                     } catch (e: any) {
                         return Response.json(
                             { error: e?.message || 'Failed to start tunnel', settings: getLiveSettings() },
@@ -343,9 +373,6 @@ Bun.serve({
                 } else if (enabled === false) {
                     await stopTunnel();
                 }
-
-                if (provider) settings.tunnel.provider = provider;
-                if (autoStart !== undefined) settings.tunnel.autoStart = autoStart;
             }
 
             if (patch.maxMode !== undefined) {
@@ -427,7 +454,11 @@ Bun.serve({
     }
     if (url.pathname === "/api/tunnel" && req.method === "POST") {
         try {
-            const body = await req.json() as { provider?: TunnelProvider; authtoken?: string };
+            const body = await req.json() as {
+                provider?: TunnelProvider;
+                authtoken?: string;
+                options?: Record<string, unknown>;
+            };
             if (!isTunnelProvider(body.provider)) {
                 return Response.json({ error: 'Invalid provider' }, { status: 400, headers: corsHeaders });
             }
@@ -435,7 +466,17 @@ Bun.serve({
                 return Response.json({ error: 'authtoken is only valid for ngrok' }, { status: 400, headers: corsHeaders });
             }
             return await queueSettingsMutation(async () => {
-                await startTunnel(body.provider as TunnelProvider, { authtoken: body.authtoken });
+                const settings = loadProxySettings();
+                // Fill omitted fields from saved settings so a caller can start a
+                // configured tunnel without re-sending secrets it never received.
+                const optionsPatch: Record<string, unknown> = { ...(body.options ?? {}) };
+                if (body.authtoken !== undefined && optionsPatch.authtoken === undefined) {
+                    optionsPatch.authtoken = body.authtoken;
+                }
+                const options = mergeTunnelOptions(settings.tunnel.options, optionsPatch);
+                await startTunnel(body.provider as TunnelProvider, options, {
+                    autoReconnect: settings.tunnel.autoReconnect,
+                });
                 return Response.json(getTunnelState(), { headers: corsHeaders });
             });
         } catch (e: any) {
