@@ -321,7 +321,12 @@ async function main() {
     if (startupOptions.tunnelProvider) {
         console.log(`${YELLOW}⏳ Starting ${startupOptions.tunnelProvider} tunnel...${RESET}`);
         try {
-            await startTunnel(startupOptions.tunnelProvider);
+            // Reuse the saved per-provider options so a configured fixed URL
+            // (named tunnel, static domain, funnel) comes back on every boot.
+            const tunnelSettings = loadProxySettings().tunnel;
+            await startTunnel(startupOptions.tunnelProvider, tunnelSettings.options, {
+                autoReconnect: tunnelSettings.autoReconnect,
+            });
             console.log(`${GREEN}✅ Tunnel process started (${startupOptions.tunnelProvider})${RESET}`);
             const tunnelUrl = await waitForLocalTunnelUrl();
             if (tunnelUrl) {

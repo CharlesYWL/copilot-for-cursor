@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { normalizeModelAliases, normalizeProxySettings } from './settings-config';
+import {
+    isFixedUrlConfig,
+    mergeTunnelOptions,
+    normalizeModelAliases,
+    normalizeProxySettings,
+    normalizeTunnelOptions,
+    redactTunnelOptions,
+    SECRET_PLACEHOLDER,
+} from './settings-config';
 import { parseStartupOptions } from './startup-options';
 
 const settings = normalizeProxySettings({
@@ -14,7 +22,7 @@ describe('proxy settings', () => {
             tunnel: { autoStart: 1, provider: 'unknown' },
         })).toEqual({
             maxMode: false,
-            tunnel: { autoStart: false, provider: 'cloudflared' },
+            tunnel: { autoStart: false, autoReconnect: true, provider: 'cloudflared', options: {} },
             modelAliases: {},
         });
     });
@@ -48,6 +56,77 @@ describe('proxy settings', () => {
     test('rejects conflicting or invalid tunnel flags', () => {
         expect(() => parseStartupOptions(['--tunnel=bore', '--no-tunnel'], settings)).toThrow();
         expect(() => parseStartupOptions(['--tunnel=invalid'], settings)).toThrow();
+    });
+
+    test('accepts tailscale as a tunnel provider', () => {
+        expect(parseStartupOptions(['--tunnel=tailscale'], settings).tunnelAction)
+            .toEqual({ enabled: true, provider: 'tailscale' });
+    });
+});
+
+describe('tunnel options', () => {
+    test('keeps well-formed per-provider values', () => {
+        expect(normalizeTunnelOptions({
+            cloudflaredMode: 'named',
+            cloudflaredHostname: '  copilot.example.com  ',
+            ngrokDomain: 'demo.ngrok-free.dev',
+            borePort: 41420,
+            tailscalePort: 8443,
+        })).toEqual({
+            cloudflaredMode: 'named',
+            cloudflaredHostname: 'copilot.example.com',
+            ngrokDomain: 'demo.ngrok-free.dev',
+            borePort: 41420,
+            tailscalePort: 8443,
+        });
+    });
+
+    test('drops invalid ports, blank strings, and unknown modes', () => {
+        expect(normalizeTunnelOptions({
+            cloudflaredMode: 'sideways',
+            cloudflaredHostname: '   ',
+            borePort: 99999,
+            // Funnel only exposes 443, 8443 and 10000.
+            tailscalePort: 8080,
+        })).toEqual({});
+        expect(normalizeTunnelOptions(null)).toEqual({});
+        expect(normalizeTunnelOptions('nope')).toEqual({});
+    });
+
+    test('redacts secrets but leaves other fields intact', () => {
+        expect(redactTunnelOptions({
+            authtoken: 'real-token',
+            cloudflaredToken: 'cf-token',
+            ngrokDomain: 'demo.ngrok-free.dev',
+        })).toEqual({
+            authtoken: SECRET_PLACEHOLDER,
+            cloudflaredToken: SECRET_PLACEHOLDER,
+            ngrokDomain: 'demo.ngrok-free.dev',
+        });
+    });
+
+    test('keeps a stored secret when the placeholder is sent back', () => {
+        const merged = mergeTunnelOptions(
+            { authtoken: 'real-token', ngrokDomain: 'old.ngrok-free.dev' },
+            { authtoken: SECRET_PLACEHOLDER, ngrokDomain: 'new.ngrok-free.dev' },
+        );
+        expect(merged).toEqual({ authtoken: 'real-token', ngrokDomain: 'new.ngrok-free.dev' });
+    });
+
+    test('clears a field when an empty string is sent', () => {
+        expect(mergeTunnelOptions({ authtoken: 'real-token' }, { authtoken: '' })).toEqual({});
+        expect(mergeTunnelOptions({ ngrokDomain: 'demo.ngrok-free.dev' }, { ngrokDomain: '' })).toEqual({});
+    });
+
+    test('identifies which provider and option pairs yield a fixed URL', () => {
+        expect(isFixedUrlConfig('cloudflared', { cloudflaredMode: 'named' })).toBe(true);
+        expect(isFixedUrlConfig('cloudflared', { cloudflaredMode: 'quick' })).toBe(false);
+        expect(isFixedUrlConfig('ngrok', { ngrokDomain: 'demo.ngrok-free.dev' })).toBe(true);
+        expect(isFixedUrlConfig('ngrok', {})).toBe(false);
+        expect(isFixedUrlConfig('tailscale', {})).toBe(true);
+        expect(isFixedUrlConfig('bore', { borePort: 41420 })).toBe(true);
+        expect(isFixedUrlConfig('bore', {})).toBe(false);
+        expect(isFixedUrlConfig(null, {})).toBe(false);
     });
 });
 

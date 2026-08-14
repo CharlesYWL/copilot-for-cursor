@@ -36,7 +36,7 @@ export function parseStartupOptions(args: string[], settings: ProxySettings): St
             ? 'cloudflared'
             : tunnelArgs[0].slice('--tunnel='.length);
         if (!isTunnelProvider(requestedProvider)) {
-            throw new Error(`Invalid tunnel provider "${requestedProvider}". Use cloudflared, ngrok, or bore`);
+            throw new Error(`Invalid tunnel provider "${requestedProvider}". Use cloudflared, ngrok, bore, or tailscale`);
         }
         tunnelAction = { enabled: true, provider: requestedProvider };
         tunnelProvider = requestedProvider;

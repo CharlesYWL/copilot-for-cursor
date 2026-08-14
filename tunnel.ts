@@ -3,9 +3,32 @@ import { existsSync, mkdirSync, chmodSync, createWriteStream, renameSync, rmSync
 import { homedir } from 'os';
 import { join } from 'path';
 import { pipeline } from 'stream/promises';
+import { isFixedUrlConfig } from './settings-config';
 
-export type TunnelProvider = 'cloudflared' | 'ngrok' | 'bore';
+export type TunnelProvider = 'cloudflared' | 'ngrok' | 'bore' | 'tailscale';
 export type TunnelStatus = 'idle' | 'starting' | 'running' | 'error' | 'stopped';
+
+export interface TunnelOptions {
+    /** 'quick' = throwaway *.trycloudflare.com, 'named' = your own stable hostname. */
+    cloudflaredMode?: 'quick' | 'named';
+    /** Remote-managed named tunnel token, copied from the Zero Trust dashboard. */
+    cloudflaredToken?: string;
+    /** Locally-managed named tunnel, created via `cloudflared tunnel create <name>`. */
+    cloudflaredName?: string;
+    /** Public hostname the named tunnel is routed to — cloudflared never prints it. */
+    cloudflaredHostname?: string;
+
+    /** ngrok authtoken. Optional when already set via `ngrok config add-authtoken`. */
+    authtoken?: string;
+    /** Reserved static domain, e.g. `foo-bar.ngrok-free.dev`. The free plan includes one. */
+    ngrokDomain?: string;
+
+    /** Requested remote port on bore.pub. Best effort — fails if already taken. */
+    borePort?: number;
+
+    /** Tailscale Funnel public port. Only 443, 8443 and 10000 are allowed. */
+    tailscalePort?: number;
+}
 
 export interface TunnelState {
     provider: TunnelProvider | null;
@@ -13,10 +36,15 @@ export interface TunnelState {
     url: string | null;
     error: string | null;
     startedAt: number | null;
+    /** True when this URL survives restarts (named tunnel / static domain / funnel). */
+    fixed: boolean;
+    /** How many times auto-reconnect has relaunched the provider. */
+    restarts: number;
 }
 
 const PROXY_PORT = 4142;
 const BIN_DIR = join(homedir(), '.copilot-proxy', 'bin');
+const MAX_BACKOFF_MS = 30_000;
 
 let state: TunnelState = {
     provider: null,
@@ -24,9 +52,20 @@ let state: TunnelState = {
     url: null,
     error: null,
     startedAt: null,
+    fixed: false,
+    restarts: 0,
 };
 
 let currentProc: Subprocess | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let activeProvider: TunnelProvider | null = null;
+let activeOptions: TunnelOptions = {};
+let autoReconnect = true;
+let restartAttempt = 0;
+/** Bumped on every launch and stop so stale process callbacks can be ignored. */
+let runId = 0;
+let recentLines: string[] = [];
+
 const subscribers = new Set<(s: TunnelState) => void>();
 
 const notify = () => {
@@ -241,6 +280,34 @@ const streamLines = async (
     } catch {}
 };
 
+/** Runs a short-lived command and returns stdout, or null if it fails. */
+const runCapture = async (cmd: string[]): Promise<string | null> => {
+    try {
+        const proc = spawn(cmd, { stdout: 'pipe', stderr: 'ignore' });
+        const out = await new Response(proc.stdout as ReadableStream<Uint8Array>).text();
+        const code = await proc.exited;
+        return code === 0 ? out : null;
+    } catch {
+        return null;
+    }
+};
+
+/** Wires a provider's stdout/stderr into a line handler, keeping the tail for error reporting. */
+const attachStreams = (proc: Subprocess, onLine: (line: string) => void) => {
+    const handler = (line: string) => {
+        recentLines.push(line);
+        if (recentLines.length > 5) recentLines.shift();
+        onLine(line);
+    };
+    streamLines(proc.stdout as ReadableStream<Uint8Array>, handler);
+    streamLines(proc.stderr as ReadableStream<Uint8Array>, handler);
+};
+
+const normalizeHttpsUrl = (value: string): string => {
+    const trimmed = value.trim().replace(/\/+$/, '');
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
 // bore publishes per-target archives whose names embed the release version,
 // so the asset has to be resolved from the release listing rather than built
 // from a fixed `latest/download/...` URL.
@@ -276,43 +343,62 @@ export const selectBoreAsset = (
     return assetNames.find(name => name.endsWith(`-${targetTriple}${suffix}`)) ?? null;
 };
 
-const startCloudflared = async (): Promise<void> => {
+const startCloudflared = async (options: TunnelOptions): Promise<Subprocess> => {
     const bin = await ensureCloudflaredBinary();
-    const proc = spawn([bin, 'tunnel', '--url', `http://localhost:${PROXY_PORT}`, '--no-autoupdate'], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-    });
-    currentProc = proc;
 
-    const urlRegex = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
-    const onLine = (line: string) => {
+    if (options.cloudflaredMode !== 'named') {
+        const proc = spawn([bin, 'tunnel', '--url', `http://localhost:${PROXY_PORT}`, '--no-autoupdate'], {
+            stdout: 'pipe',
+            stderr: 'pipe',
+        });
+        const urlRegex = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
+        attachStreams(proc, line => {
+            if (state.status === 'running') return;
+            const m = line.match(urlRegex);
+            if (m) setState({ status: 'running', url: m[0] });
+        });
+        return proc;
+    }
+
+    const hostname = options.cloudflaredHostname?.trim();
+    if (!hostname) {
+        throw new Error(
+            'A public hostname is required for a named Cloudflare tunnel. Use the hostname you routed with ' +
+            '`cloudflared tunnel route dns <tunnel> <hostname>`, or the one configured in the Zero Trust dashboard.'
+        );
+    }
+
+    const token = options.cloudflaredToken?.trim();
+    const name = options.cloudflaredName?.trim();
+    if (!token && !name) {
+        throw new Error(
+            'A named Cloudflare tunnel needs either a tunnel token (remote-managed, from the Zero Trust dashboard) ' +
+            'or a tunnel name created locally with `cloudflared tunnel create <name>`.'
+        );
+    }
+
+    const args = token
+        ? [bin, 'tunnel', '--no-autoupdate', 'run', '--token', token]
+        : [bin, 'tunnel', '--no-autoupdate', '--url', `http://localhost:${PROXY_PORT}`, 'run', name!];
+
+    const proc = spawn(args, { stdout: 'pipe', stderr: 'pipe' });
+
+    // Named tunnels never print their public hostname, so treat a registered
+    // edge connection as "up" and report the hostname the user configured.
+    const readyRegex = /Registered tunnel connection|Connection [0-9a-f-]+ registered|Updated to new configuration/i;
+    attachStreams(proc, line => {
         if (state.status === 'running') return;
-        const m = line.match(urlRegex);
-        if (m) {
-            setState({ status: 'running', url: m[0] });
-        }
-    };
-
-    streamLines(proc.stdout as ReadableStream<Uint8Array>, onLine);
-    streamLines(proc.stderr as ReadableStream<Uint8Array>, onLine);
-
-    proc.exited.then(code => {
-        if (currentProc === proc) {
-            currentProc = null;
-            if (state.status !== 'stopped') {
-                setState({
-                    status: 'error',
-                    error: `cloudflared exited unexpectedly (code ${code})`,
-                });
-            }
-        }
+        if (readyRegex.test(line)) setState({ status: 'running', url: normalizeHttpsUrl(hostname) });
     });
+    return proc;
 };
 
-const startNgrok = async (authtoken?: string): Promise<void> => {
+const startNgrok = async (options: TunnelOptions): Promise<Subprocess> => {
     const cmd = process.platform === 'win32' ? 'ngrok.exe' : 'ngrok';
     const args = ['http', String(PROXY_PORT), '--log=stdout', '--log-format=json'];
-    if (authtoken) args.push('--authtoken', authtoken);
+    // A reserved static domain is what makes the ngrok URL survive restarts.
+    if (options.ngrokDomain?.trim()) args.push('--url', normalizeHttpsUrl(options.ngrokDomain));
+    if (options.authtoken?.trim()) args.push('--authtoken', options.authtoken.trim());
 
     let proc: Subprocess;
     try {
@@ -322,40 +408,22 @@ const startNgrok = async (authtoken?: string): Promise<void> => {
             `ngrok not found on PATH. Install it from https://ngrok.com/download and ensure 'ngrok' is runnable.`
         );
     }
-    currentProc = proc;
 
-    const onLine = (line: string) => {
-        if (state.status === 'running') return;
+    attachStreams(proc, line => {
         try {
             const obj = JSON.parse(line);
-            if (obj.url && typeof obj.url === 'string' && obj.url.startsWith('http')) {
-                setState({ status: 'running', url: obj.url });
+            if (obj.lvl === 'eror' || obj.lvl === 'crit') {
+                setState({ error: obj.err || obj.msg || 'ngrok error' });
                 return;
             }
-            if (obj.msg === 'started tunnel' && obj.addr) {
-                const urlField = obj.url || obj.public_url;
-                if (urlField) setState({ status: 'running', url: urlField });
-            }
-            if (obj.lvl === 'eror' || obj.lvl === 'crit') {
-                setState({ status: 'error', error: obj.err || obj.msg || 'ngrok error' });
+            if (state.status === 'running') return;
+            const urlField = obj.url || obj.public_url;
+            if (typeof urlField === 'string' && urlField.startsWith('http')) {
+                setState({ status: 'running', url: urlField, error: null });
             }
         } catch {}
-    };
-
-    streamLines(proc.stdout as ReadableStream<Uint8Array>, onLine);
-    streamLines(proc.stderr as ReadableStream<Uint8Array>, onLine);
-
-    proc.exited.then(code => {
-        if (currentProc === proc) {
-            currentProc = null;
-            if (state.status !== 'stopped') {
-                setState({
-                    status: 'error',
-                    error: state.error ?? `ngrok exited unexpectedly (code ${code})`,
-                });
-            }
-        }
     });
+    return proc;
 };
 
 const ensureBoreBinary = async (): Promise<string> => {
@@ -427,92 +495,210 @@ const ensureBoreBinary = async (): Promise<string> => {
     return localPath;
 };
 
-const startBore = async (): Promise<void> => {
+const startBore = async (options: TunnelOptions): Promise<Subprocess> => {
     const cmd = await ensureBoreBinary();
+    const args = ['local', String(PROXY_PORT), '--to', 'bore.pub'];
+    // bore.pub grants a requested port only if it is free, so this is best effort.
+    if (options.borePort) args.push('--port', String(options.borePort));
+
     let proc: Subprocess;
     try {
-        proc = spawn([cmd, 'local', String(PROXY_PORT), '--to', 'bore.pub'], {
-            stdout: 'pipe',
-            stderr: 'pipe',
-        });
+        proc = spawn([cmd, ...args], { stdout: 'pipe', stderr: 'pipe' });
     } catch (e: any) {
         throw new Error(
             `Failed to start bore (${cmd}): ${e?.message ?? e}`
         );
     }
-    currentProc = proc;
 
     const urlRegex = /listening at (bore\.pub:\d+)/i;
-    const onLine = (line: string) => {
+    attachStreams(proc, line => {
         if (state.status === 'running') return;
         const m = line.match(urlRegex);
-        if (m) {
-            setState({ status: 'running', url: `http://${m[1]}` });
-        }
-    };
+        if (m) setState({ status: 'running', url: `http://${m[1]}` });
+    });
+    return proc;
+};
 
-    streamLines(proc.stdout as ReadableStream<Uint8Array>, onLine);
-    streamLines(proc.stderr as ReadableStream<Uint8Array>, onLine);
+/** Tailscale ships outside PATH on Windows and macOS more often than not. */
+export const getTailscaleCandidates = (platform: NodeJS.Platform = process.platform): string[] => {
+    if (platform === 'win32') {
+        return ['tailscale.exe', 'C:\\Program Files\\Tailscale\\tailscale.exe'];
+    }
+    if (platform === 'darwin') {
+        return [
+            'tailscale',
+            '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+            '/usr/local/bin/tailscale',
+        ];
+    }
+    return ['tailscale', '/usr/bin/tailscale'];
+};
 
-    proc.exited.then(code => {
-        if (currentProc === proc) {
-            currentProc = null;
-            if (state.status !== 'stopped') {
-                setState({
-                    status: 'error',
-                    error: `bore exited unexpectedly (code ${code})`,
-                });
-            }
+const resolveTailscaleBin = (): string => {
+    const candidates = getTailscaleCandidates();
+    if (Bun.which(candidates[0]!)) return candidates[0]!;
+    for (const candidate of candidates.slice(1)) {
+        if (existsSync(candidate)) return candidate;
+    }
+    return candidates[0]!;
+};
+
+/** Reads this node's MagicDNS name, which is the Funnel hostname. */
+const resolveTailscaleUrl = async (bin: string): Promise<string | null> => {
+    const out = await runCapture([bin, 'status', '--json']);
+    if (!out) return null;
+    try {
+        const parsed = JSON.parse(out) as { Self?: { DNSName?: string } };
+        const dns = parsed.Self?.DNSName?.replace(/\.$/, '');
+        return dns ? `https://${dns}` : null;
+    } catch {
+        return null;
+    }
+};
+
+const startTailscale = async (options: TunnelOptions): Promise<Subprocess> => {
+    const bin = resolveTailscaleBin();
+    const args = ['funnel'];
+    if (options.tailscalePort && options.tailscalePort !== 443) {
+        args.push(`--https=${options.tailscalePort}`);
+    }
+    args.push(String(PROXY_PORT));
+
+    let proc: Subprocess;
+    try {
+        proc = spawn([bin, ...args], { stdout: 'pipe', stderr: 'pipe' });
+    } catch (e: any) {
+        throw new Error(
+            `tailscale not found. Install it from https://tailscale.com/download, run 'tailscale up', then enable ` +
+            `MagicDNS + HTTPS certificates and the 'funnel' node attribute in the admin console.`
+        );
+    }
+
+    const urlRegex = /https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net(?::\d+)?/i;
+    attachStreams(proc, line => {
+        if (state.status === 'running') return;
+        const m = line.match(urlRegex);
+        if (m) setState({ status: 'running', url: m[0].replace(/\/$/, '') });
+    });
+
+    // Funnel does not always echo the URL, so fall back to the node's MagicDNS
+    // name after a short grace period.
+    const myRun = runId;
+    setTimeout(async () => {
+        if (runId !== myRun || state.url) return;
+        const base = await resolveTailscaleUrl(bin);
+        if (runId !== myRun || state.url || !base) return;
+        const port = options.tailscalePort && options.tailscalePort !== 443 ? `:${options.tailscalePort}` : '';
+        setState({ status: 'running', url: `${base}${port}` });
+    }, 4000);
+
+    return proc;
+};
+
+// ── Lifecycle ────────────────────────────────────────────────────────────────
+
+const clearReconnectTimer = () => {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+};
+
+const scheduleReconnect = (reason: string) => {
+    const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** restartAttempt);
+    restartAttempt += 1;
+    setState({
+        status: 'starting',
+        error: `${reason} — reconnecting in ${Math.round(delay / 1000)}s (attempt ${restartAttempt})`,
+        // A fixed URL comes back unchanged, so keep showing it while we retry.
+        url: state.fixed ? state.url : null,
+    });
+    clearReconnectTimer();
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void launch().catch(() => {});
+    }, delay);
+};
+
+const launch = async (): Promise<void> => {
+    const provider = activeProvider;
+    if (!provider) return;
+
+    const myRun = ++runId;
+    recentLines = [];
+    const fixed = isFixedUrlConfig(provider, activeOptions);
+    setState({
+        provider,
+        status: 'starting',
+        url: fixed ? state.url : null,
+        error: null,
+        fixed,
+    });
+
+    let proc: Subprocess;
+    try {
+        if (provider === 'cloudflared') proc = await startCloudflared(activeOptions);
+        else if (provider === 'ngrok') proc = await startNgrok(activeOptions);
+        else if (provider === 'bore') proc = await startBore(activeOptions);
+        else if (provider === 'tailscale') proc = await startTailscale(activeOptions);
+        else throw new Error(`Unknown provider: ${provider}`);
+    } catch (err: any) {
+        if (runId !== myRun) return;
+        setState({ status: 'error', error: err?.message ?? String(err), url: null });
+        throw err;
+    }
+
+    if (runId !== myRun) {
+        // A stop or restart landed while the provider was still booting.
+        await killProc(proc);
+        return;
+    }
+    currentProc = proc;
+
+    void proc.exited.then(code => {
+        if (runId !== myRun) return;
+        currentProc = null;
+        const detail = recentLines.at(-1);
+        const reason = `${provider} exited unexpectedly (code ${code})${detail ? `: ${detail}` : ''}`;
+        if (autoReconnect) {
+            setState({ restarts: state.restarts + 1 });
+            scheduleReconnect(reason);
+        } else {
+            setState({ status: 'error', error: reason, url: null });
         }
     });
 };
 
 export const startTunnel = async (
     provider: TunnelProvider,
-    opts: { authtoken?: string } = {}
+    options: TunnelOptions = {},
+    opts: { autoReconnect?: boolean } = {}
 ): Promise<void> => {
     await stopTunnel();
 
-    setState({
-        provider,
-        status: 'starting',
-        url: null,
-        error: null,
-        startedAt: Date.now(),
-    });
+    activeProvider = provider;
+    activeOptions = { ...options };
+    autoReconnect = opts.autoReconnect ?? true;
+    restartAttempt = 0;
 
-    try {
-        if (provider === 'cloudflared') {
-            await startCloudflared();
-        } else if (provider === 'ngrok') {
-            await startNgrok(opts.authtoken);
-        } else if (provider === 'bore') {
-            await startBore();
-        } else {
-            throw new Error(`Unknown provider: ${provider}`);
-        }
-    } catch (err: any) {
-        setState({
-            status: 'error',
-            error: err?.message ?? String(err),
-        });
-        if (currentProc) {
-            await killProc(currentProc);
-            currentProc = null;
-        }
-        throw err;
-    }
+    setState({ startedAt: Date.now(), restarts: 0 });
+    await launch();
 };
 
 export const stopTunnel = async (): Promise<void> => {
+    runId += 1; // Invalidate in-flight launches and pending exit handlers.
+    clearReconnectTimer();
+    restartAttempt = 0;
+
     const proc = currentProc;
     currentProc = null;
-    if (proc) {
-        await killProc(proc);
-    }
+    if (proc) await killProc(proc);
+
     setState({
         status: 'stopped',
         url: null,
         error: null,
+        fixed: false,
+        restarts: 0,
     });
 };

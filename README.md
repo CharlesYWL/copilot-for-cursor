@@ -97,7 +97,7 @@ Cursor needs a publicly reachable endpoint rather than `localhost`. You have two
 
 **Option A — One-click tunnel (recommended)**
 
-Open the dashboard at `http://localhost:4142/`, go to the **Tunnel** tab, pick a provider (Cloudflare, ngrok, or bore) and click **Start Tunnel**. The public URL, QR code, and Cursor endpoint will appear instantly. Cloudflare and bore are downloaded automatically — no signup, no config.
+Open the dashboard at `http://localhost:4142/`, go to the **Tunnel** tab, pick a provider (Cloudflare, ngrok, bore, or Tailscale) and click **Start Tunnel**. The public URL, QR code, and Cursor endpoint will appear instantly. Cloudflare and bore are downloaded automatically — no signup, no config. For a URL that survives restarts, see [Fixed tunnel URL](#-fixed-tunnel-url).
 
 **Option B — Run a tunnel manually**
 
@@ -115,6 +115,58 @@ bore local 4142 --to bore.pub
 Copy the resulting public URL (e.g., `https://xxxxx.trycloudflare.com` or `http://bore.pub:PORT`).
 
 > Cloudflare and ngrok give you an HTTPS URL. bore exposes plain HTTP on a `bore.pub` port, which also works — reach for it when Cloudflare's account-less Quick Tunnels are rate limited (`error code: 1015`).
+
+---
+
+## 📌 Fixed tunnel URL
+
+A quick tunnel hands you a new random URL on every restart, which means re-pasting the endpoint into Cursor each time. Pick one of these to get a URL that stays put, then tick **Auto-start** on the Tunnel tab so the same URL comes back on every launch.
+
+| Provider | URL you get | Cost | Needs a domain? |
+|---|---|---|---|
+| **ngrok static domain** | `your-name.ngrok-free.dev` | Free | No |
+| **Tailscale Funnel** | `machine.tailnet.ts.net` | Free | No |
+| **Cloudflare named tunnel** | `copilot.example.com` | Free | Yes — zone on Cloudflare |
+| Cloudflare quick tunnel | random `*.trycloudflare.com` | Free | No |
+| bore.pub | `bore.pub:PORT` (plain HTTP) | Free | No |
+
+**ngrok — easiest, no domain required**
+
+Every free ngrok account includes one static domain. Claim it under **Domains** in the [ngrok dashboard](https://dashboard.ngrok.com/), then paste it into the Tunnel tab with your authtoken. Equivalent CLI:
+
+```bash
+ngrok http 4142 --url https://your-name.ngrok-free.dev
+```
+
+**Tailscale Funnel — fixed URL derived from the machine**
+
+Install [Tailscale](https://tailscale.com/download) and run `tailscale up`. In the admin console enable **MagicDNS** and **HTTPS certificates**, and grant the node the `funnel` attribute:
+
+```json
+{ "nodeAttrs": [{ "target": ["autogroup:member"], "attr": ["funnel"] }] }
+```
+
+Then pick Tailscale Funnel in the dashboard, or `copilot-for-cursor --tunnel=tailscale`. Equivalent CLI:
+
+```bash
+tailscale funnel 4142
+```
+
+**Cloudflare named tunnel — your own hostname**
+
+Requires a domain already on Cloudflare. Create the tunnel once and route DNS at it, then enter the hostname plus either the tunnel token (remote-managed) or the tunnel name (locally-managed):
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create copilot-proxy
+cloudflared tunnel route dns copilot-proxy copilot.example.com
+```
+
+> Named tunnels never print their hostname, so the dashboard asks for it explicitly and uses it for the Cursor endpoint.
+
+**Staying up:** *Reconnect automatically* is on by default. If the tunnel process dies, the proxy relaunches it with exponential backoff (capped at 30s) — and because the URL is fixed, Cursor keeps working without reconfiguration.
+
+Tokens are stored in `~/.copilot-proxy/settings.json` (owner-only where the OS supports it) and are never returned to the dashboard — it only ever sees a `__saved__` placeholder.
 
 ---
 
@@ -294,9 +346,34 @@ Available fields:
 | `requireApiKey` | boolean | Enables/disables API-key enforcement for `/v1/*` requests |
 | `tunnel.enabled` | boolean | Starts or stops the tunnel immediately |
 | `tunnel.autoStart` | boolean | Starts the saved tunnel provider on future launches |
-| `tunnel.provider` | string | `cloudflared`, `ngrok`, or `bore` |
-| `tunnel.authtoken` | string | Optional one-time ngrok token; never persisted |
+| `tunnel.autoReconnect` | boolean | Relaunches the tunnel automatically if the process dies (default `true`) |
+| `tunnel.provider` | string | `cloudflared`, `ngrok`, `bore`, or `tailscale` |
+| `tunnel.options` | object | Per-provider settings, including the ones that pin a fixed URL (see [Fixed tunnel URL](#-fixed-tunnel-url)) |
+| `tunnel.authtoken` | string | Legacy alias for `tunnel.options.authtoken` |
 | `modelAliases` | object | Maps a Cursor-facing alias to a real upstream model ID (see [Context window and model aliases](#context-window-and-model-aliases)); does not change Cursor's displayed context window |
+
+`tunnel.options` fields:
+
+| Field | Applies to | Behavior |
+|---|---|---|
+| `cloudflaredMode` | cloudflared | `quick` (random URL) or `named` (fixed hostname) |
+| `cloudflaredHostname` | cloudflared | Public hostname routed at the named tunnel |
+| `cloudflaredToken` | cloudflared | Remote-managed tunnel token; stored, never returned |
+| `cloudflaredName` | cloudflared | Locally-managed tunnel name |
+| `ngrokDomain` | ngrok | Reserved static domain |
+| `authtoken` | ngrok | ngrok authtoken; stored, never returned |
+| `borePort` | bore | Requested remote port (best effort) |
+| `tailscalePort` | tailscale | Public HTTPS port: `443`, `8443`, or `10000` |
+
+Start a named Cloudflare tunnel on a fixed hostname and remember it for future launches:
+
+```bash
+curl -X PATCH http://localhost:4142/api/settings \
+  -H "Content-Type: application/json" \
+  -d '{"tunnel":{"enabled":true,"autoStart":true,"provider":"cloudflared","options":{"cloudflaredMode":"named","cloudflaredHostname":"copilot.example.com","cloudflaredToken":"eyJhIjoi..."}}}'
+```
+
+Secrets read back as `__saved__`; send that placeholder to keep the stored value, or an empty string to clear it.
 
 Settings mutations are serialized so concurrent agents cannot overwrite one another. Call management endpoints through `localhost` or another trusted connection; they control the live proxy and tunnel.
 
@@ -356,7 +433,7 @@ Four tabs:
 | Extended thinking (chain-of-thought) | ❌ Stripped |
 | Prompt caching (`cache_control`) | ❌ Stripped |
 | Claude Vision | ❌ Not supported via Copilot |
-| Tunnel URL changes on restart | ⚠️ Use paid plan for fixed subdomain |
+| Tunnel URL changes on restart | ✅ Fixed via ngrok static domain, Tailscale Funnel, or a Cloudflare named tunnel — see [Fixed tunnel URL](#-fixed-tunnel-url) |
 
 ---
 
