@@ -157,7 +157,11 @@ tailscale funnel 4142
 Requires a domain already on Cloudflare. Create the tunnel once and route DNS at it, then enter the hostname plus either the tunnel token (remote-managed) or the tunnel name (locally-managed):
 
 ```bash
+# Skip this first line if `cloudflared tunnel list` already works — you are
+# logged in, and re-running it overwrites ~/.cloudflared/cert.pem, possibly
+# authorizing a different zone than the one you meant.
 cloudflared tunnel login
+
 cloudflared tunnel create copilot-proxy
 cloudflared tunnel route dns copilot-proxy copilot.example.com
 ```
