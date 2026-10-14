@@ -1,5 +1,14 @@
 # 🚀 Copilot Proxy for Cursor
 
+> [!WARNING]
+> **This repository is archived and no longer maintained.**
+>
+> Please use **[leookun/cursor-byok](https://github.com/leookun/cursor-byok)** instead. With cursor-byok plus the Copilot auth plugin, GitHub Copilot models can be used in Cursor directly, so the local API (`copilot-api` + proxy router) and the HTTPS tunnel this project provided are no longer needed.
+>
+> The documentation below is kept for historical reference only.
+
+---
+
 > Forked from [jacksonkasi1/copilot-for-cursor](https://github.com/jacksonkasi1/copilot-for-cursor) with full Anthropic → OpenAI conversion + Responses API bridge.
 
 **Unlock the full power of GitHub Copilot in Cursor IDE.**
